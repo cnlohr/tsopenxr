@@ -1,2 +1,4 @@
 # tsopenxr
-Single-file header for simple OpenXR use with C
+
+Single-file header for simple OpenXR use with C, with no reliance on any other libraries (but does use/include rawdraw for context+demo)
+
