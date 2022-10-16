@@ -165,7 +165,7 @@ static void InvertOrthogonalMat(float* result, float* src)
 
 
 int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-		 XrSpace tsoStageSpace,  XrTime predictedDisplayTime, XrCompositionLayerProjection * layer, XrCompositionLayerProjectionView * projectionLayerViews,
+		 XrSpace tsoStageSpace, XrTime predictedDisplayTime, XrCompositionLayerProjection * layer, XrCompositionLayerProjectionView * projectionLayerViews,
 		 XrView * views, int viewCountOutput, void * opaque )
 {
 	XrResult  result;
@@ -296,6 +296,8 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 
 int main()
 {
+	XrResult result;
+
 	// Tell windows we want to use VT100 terminal color codes.
 	#ifdef USE_WINDOWS
 	system("");
@@ -343,22 +345,30 @@ int main()
 	{
 		tsoHandleLoop( tsoInstance );
 
-		if (tsoSessionReady)
+		if (!tsoSessionReady)
 		{
-			if (!tsoSyncInput(tsoInstance, tsoSession, tsoActionSet))
-			{
-				return -1;
-			}
-
-			if (!tsoRenderFrame(tsoInstance, tsoSession, tsoViewConfigs, tsoNumViewConfigs,
-							 tsoStageSpace, RenderLayer, 0 ) )
-			{
-				return -1;
-			}
-		}
-		else
-		{
+			short w, h;
+			CNFGClearFrame();
+			CNFGGetDimensions( &w, &h );
+			glViewport( 0, 0, w, h );
+			CNFGPenX = 1;
+			CNFGPenY = 1;
+			CNFGColor( 0xffffffff );
+			CNFGDrawText( "Session Not Ready.", 2 );
+			CNFGSwapBuffers();
 			OGUSleep(100000);
+			continue;
+		}
+
+		if (!tsoSyncInput(tsoInstance, tsoSession, tsoActionSet))
+		{
+			return -1;
+		}
+
+		if (!tsoRenderFrame(tsoInstance, tsoSession, tsoViewConfigs, tsoNumViewConfigs,
+						 tsoStageSpace, RenderLayer, 0 ) )
+		{
+			return -1;
 		}
 
 		short w, h;
@@ -370,7 +380,8 @@ int main()
 		snprintf( debugBuffer, sizeof(debugBuffer)-1, 
 			"Rect: %d,%d [%d,%d]\n"
 			"FoV:  %6.3f%6.3f%6.3f%6.3f\n"
-			"Pose: %6.3f%6.3f%6.3f\n",
+			"Pose: %6.3f%6.3f%6.3f\n\n"
+			,
 			saveLayerProjectionView.subImage.imageRect.offset.x,
 			saveLayerProjectionView.subImage.imageRect.offset.y,
 			saveLayerProjectionView.subImage.imageRect.extent.width,
@@ -388,10 +399,37 @@ int main()
 		CNFGPenY = 1;
 		CNFGColor( 0xffffffff );
 		CNFGDrawText( debugBuffer, 2 );
+
+		XrSpaceLocation handLocations[2] = { 0 };
+		handLocations[0].type = XR_TYPE_SPACE_LOCATION;
+		handLocations[1].type = XR_TYPE_SPACE_LOCATION;
+		XrResult handResults[2];
+		handResults[0] = xrLocateSpace( tsoStageSpace, tsoHandSpace[0], tsoPredictedDisplayTime, &handLocations[0] );
+		handResults[1] = xrLocateSpace( tsoStageSpace, tsoHandSpace[1], tsoPredictedDisplayTime, &handLocations[1] );
+
+		snprintf( debugBuffer, sizeof(debugBuffer)-1, 
+			"Hand1 %6.3f%6.3f%6.3f %d %d\n"
+			"Hand2 %6.3f%6.3f%6.3f %d %d\n",
+			handLocations[0].pose.position.x,
+			handLocations[0].pose.position.y,
+			handLocations[0].pose.position.z,
+			handResults[0],
+			handLocations[0].locationFlags,
+			handLocations[1].pose.position.x,
+			handLocations[1].pose.position.y,
+			handLocations[1].pose.position.z,
+			handResults[1],
+			handLocations[1].locationFlags
+		);
+
+		CNFGPenX = 1;
+		CNFGPenY = 100;
+		CNFGColor( 0xffffffff );
+		CNFGDrawText( debugBuffer, 2 );
+
 		CNFGSwapBuffers();
 	}
 
-	XrResult result;
 	int i;
 	for( i = 0; i < tsoNumViewConfigs; i++ )
 	{

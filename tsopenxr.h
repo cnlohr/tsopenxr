@@ -39,6 +39,8 @@ extern XrApiLayerProperties * tsoLayerProps;
 extern int tsoNumLayerProps;
 extern XrViewConfigurationView * tsoViewConfigs;
 extern int tsoNumViewConfigs;
+extern XrSpace tsoHandSpace[2];
+extern XrTime tsoPredictedDisplayTime;
 
 extern XrInstance tsoInstance;
 extern XrSystemId tsoSystemId;
@@ -150,6 +152,8 @@ XrSystemId tsoSystemId = XR_NULL_HANDLE;
 XrSession tsoSession = XR_NULL_HANDLE;
 XrActionSet tsoActionSet = XR_NULL_HANDLE;
 XrSpace tsoStageSpace = XR_NULL_HANDLE;
+XrSpace tsoHandSpace[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+XrTime tsoPredictedDisplayTime;
 
 tsoSwapchainInfo * tsoSwapchains;
 XrSwapchainImageOpenGLKHR ** tsoSwapchainImages;
@@ -587,93 +591,7 @@ int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSe
 			return 0;
 		}
 	}
-#if 0
-	// oculus touch
-	{
-		XrPath interactionProfilePath = XR_NULL_PATH;
-		xrStringToPath(tsoInstance, "/interaction_profiles/oculus/touch_controller", &interactionProfilePath);
-		XrActionSuggestedBinding bindings[7] = {
-			{grabAction, squeezeValuePath[0]},
-			{grabAction, squeezeValuePath[1]},
-			{poseAction, posePath[0]},
-			{poseAction, posePath[1]},
-			{quitAction, menuClickPath[0]},
-			//{quitAction, menuClickPath[1]},  // no menu button on right controller?
-			{vibrateAction, hapticPath[0]},
-			{vibrateAction, hapticPath[1]}
-		};
 
-		XrInteractionProfileSuggestedBinding suggestedBindings;
-		suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-		suggestedBindings.next = NULL;
-		suggestedBindings.interactionProfile = interactionProfilePath;
-		suggestedBindings.suggestedBindings = bindings;
-		suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
-		result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
-		if (!tsoCheck(tsoInstance, result, "xrSuggestInteractionProfileBindings (oculus)"))
-		{
-			return 0;
-		}
-	}
-
-	// vive
-	{
-		XrPath interactionProfilePath = XR_NULL_PATH;
-		xrStringToPath(tsoInstance, "/interaction_profiles/htc/vive_controller", &interactionProfilePath);
-		std::vector<XrActionSuggestedBinding> bindings = {
-			{grabAction, squeezeClickPath[0]},
-			{grabAction, squeezeClickPath[1]},
-			{poseAction, posePath[0]},
-			{poseAction, posePath[1]},
-			{quitAction, menuClickPath[0]},
-			{quitAction, menuClickPath[1]},
-			{vibrateAction, hapticPath[0]},
-			{vibrateAction, hapticPath[1]}
-		};
-
-		XrInteractionProfileSuggestedBinding suggestedBindings;
-		suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-		suggestedBindings.next = NULL;
-		suggestedBindings.interactionProfile = interactionProfilePath;
-		suggestedBindings.suggestedBindings = bindings.data();
-		suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
-		result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
-		if (!tsoCheck(tsoInstance, result, "xrSuggestInteractionProfileBindings (vive)"))
-		{
-			return 0;
-		}
-	}
-
-	// microsoft mixed reality
-	{
-		XrPath interactionProfilePath = XR_NULL_PATH;
-		xrStringToPath(tsoInstance, "/interaction_profiles/microsoft/motion_controller", &interactionProfilePath);
-		std::vector<XrActionSuggestedBinding> bindings = {
-			{grabAction, squeezeClickPath[0]},
-			{grabAction, squeezeClickPath[1]},
-			{poseAction, posePath[0]},
-			{poseAction, posePath[1]},
-			{quitAction, menuClickPath[0]},
-			{quitAction, menuClickPath[1]},
-			{vibrateAction, hapticPath[0]},
-			{vibrateAction, hapticPath[1]}
-		};
-
-		XrInteractionProfileSuggestedBinding suggestedBindings;
-		suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-		suggestedBindings.next = NULL;
-		suggestedBindings.interactionProfile = interactionProfilePath;
-		suggestedBindings.suggestedBindings = bindings.data();
-		suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
-		result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
-		if (!tsoCheck(tsoInstance, result, "xrSuggestInteractionProfileBindings"))
-		{
-			return false;
-		}
-	}
-#endif
-
-	XrSpace handSpace[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
 	XrActionSpaceCreateInfo aspci = { 0 };
 	aspci.type = XR_TYPE_ACTION_SPACE_CREATE_INFO;
 	aspci.next = NULL;
@@ -682,14 +600,14 @@ int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSe
 	aspci.poseInActionSpace = identity;
 
 	aspci.subactionPath = handPath[0];
-	result = xrCreateActionSpace(tsoSession, &aspci, &handSpace[0]);
+	result = xrCreateActionSpace(tsoSession, &aspci, &tsoHandSpace[0]);
 	if (!tsoCheck(tsoInstance, result, "xrCreateActionSpace"))
 	{
 		return 0;
 	}
 
 	aspci.subactionPath = handPath[1];
-	result = xrCreateActionSpace(tsoSession, &aspci, &handSpace[1]);
+	result = xrCreateActionSpace(tsoSession, &aspci, &tsoHandSpace[1]);
 	if (!tsoCheck(tsoInstance, result, "xrCreateActionSpace"))
 	{
 		return 0;
@@ -978,7 +896,7 @@ int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigura
 	XrViewLocateInfo vli;
 	vli.type = XR_TYPE_VIEW_LOCATE_INFO;
 	vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	vli.displayTime = fs.predictedDisplayTime;
+	tsoPredictedDisplayTime = vli.displayTime = fs.predictedDisplayTime;
 	vli.space = tsoStageSpace;
 	result = xrLocateViews( tsoSession, &vli, &viewState, tsoViewConfigsCount, &viewCountOutput, views );
 	if (!tsoCheck(tsoInstance, result, "xrLocateViews"))
