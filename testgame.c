@@ -33,13 +33,11 @@ void RenderTerminal()
 		for( x = 0; x < DEBUG_BUFFER_H; x++ )
 		{
 			float offset[3] = { ( x - DEBUG_BUFFER_W ) / (float)DEBUG_BUFFER_W, ( y - DEBUG_BUFFER_H ) / (float)DEBUG_BUFFER_H, -1 };
-
-			
-
 			char c = dbl->debugBuffer[x];
-
-			AppendLines( (const float[]){ 0, 0, 0, 1, 1, 1, },
-				(const uint32_t[]) { 0x000000ff, 0xffffffff, }, 1 );
+			unsigned short marker = RawdrawFontCharMap[c];
+			//AppendLines( (const float[]){ 0, 0, 0, 1, 1, 1, },
+			//	(const uint32_t[]) { 0x000000ff, 0xffffffff, }, 1 );
+			// Maybe someday...
 		}
 	}
 
