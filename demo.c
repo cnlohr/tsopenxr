@@ -10,11 +10,6 @@
 
 #include "os_generic.h"
 
-#include "testgame.h"
-
-#define TSOPENXR_ERROR GameLogError
-#define TSOPENXR_INFO  GameLogInfo
-
 #define TSOPENXR_IMPLEMENTATION
 #include "tsopenxr.h"
 
@@ -22,7 +17,6 @@
 #define CNFGOGL_NEED_EXTENSION
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
-
 
 // numColorDepthPairs * 2 
 GLuint * colorDepthPairs;
@@ -32,13 +26,26 @@ GLuint frameBuffer;
 GLuint drawProgram;
 GLuint drawProgramModelViewUniform;
 
+XrCompositionLayerProjectionView saveLayerProjectionView;
+
+
+
+#ifndef GL_FRAMEBUFFER
+#define GL_FRAMEBUFFER	 0x8D40
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_DEPTH_ATTACHMENT  0x8D00
+#define GL_DEPTH_COMPONENT16 0x81A5
+#define GL_DEPTH_COMPONENT24 0x81A6
+#endif
+
 
 void (*minXRglGenFramebuffers)( GLsizei n, GLuint *ids );
 void (*minXRglBindFramebuffer)( GLenum target, GLuint framebuffer );
 void (*minXRglFramebufferTexture2D)( GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level );
 void (*minXRglUniformMatrix4fv)( GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 void (*minXRglVertexAttribPointer)( GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
- 
+BOOL (*minXRwglSwapIntervalEXT)(int interval);
+
 void EnumOpenGLExtensions()
 {
 	minXRglGenFramebuffers = CNFGGetProcAddress( "glGenFramebuffers" );
@@ -46,6 +53,7 @@ void EnumOpenGLExtensions()
 	minXRglFramebufferTexture2D = CNFGGetProcAddress( "glFramebufferTexture2D" );
 	minXRglUniformMatrix4fv = CNFGGetProcAddress( "glUniformMatrix4fv" );
 	minXRglVertexAttribPointer = CNFGGetProcAddress( "glVertexAttribPointer" );	
+	minXRwglSwapIntervalEXT = CNFGGetProcAddress( "wglSwapIntervalEXT" );	
 }
 
 
@@ -59,7 +67,7 @@ int SetupRendering()
 		"attribute vec3 vPos;"
 		"attribute vec4 vColor;"
 		"varying vec4 vc;"
-		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); vc = vColor.abgr; }",
+		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); vc = vColor; }",
 
 		"varying vec4 vc;"
 		"void main() { gl_FragColor = vec4(vc/255.0); }" 
@@ -155,34 +163,15 @@ static void InvertOrthogonalMat(float* result, float* src)
     result[15] = 1.0f;
 }
 
+
 int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
 		 XrSpace tsoStageSpace,  XrTime predictedDisplayTime, XrCompositionLayerProjection * layer, XrCompositionLayerProjectionView * projectionLayerViews,
 		 XrView * views, int viewCountOutput, void * opaque )
 {
 	XrResult  result;
 
-	frameTime = OGGetAbsoluteTime();
-	
 	memset( projectionLayerViews, 0, sizeof( XrCompositionLayerProjectionView ) * viewCountOutput );
 
-	numLines = 0;
-	
-	{
-		// Render Scene
-		
-		// Render reference frame
-		AppendLines( (const float[]){ 
-			0, 0, 0, 1, 0, 0, 
-			0, 0, 0, 0, 1, 0, 
-			0, 0, 0, 0, 0, 1 },
-			(const uint32_t[])
-			{ 0xff0000ff, 0xff0000ff, 
-			  0x00ff00ff, 0x00ff00ff,
-			  0x0000ffff, 0x0000ffff,
-			}, 3 );
-			
-		RenderTerminal();
-	}
 
 	// Render view to the appropriate part of the swapchain image.
 	for (uint32_t i = 0; i < viewCountOutput; i++)
@@ -261,18 +250,30 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 		CNFGglUseProgram( drawProgram );
 		minXRglUniformMatrix4fv( drawProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
 
+		static const float Vertices[] = { 
+			0, 0, 0, 1, 0, 0, 
+			0, 0, 0, 0, 1, 0, 
+			0, 0, 0, 0, 0, 1 };
+		static const uint32_t Colors[] = {
+			0xff0000ff, 0xff0000ff,
+			0xff00ff00, 0xff00ff00,
+			0xffff0000, 0xffff0000, 
+			};
+			
+		static const int GeometryIndices[] = {
+			0, 1, 2, 3, 4, 5,
+		};
 
 		CNFGglEnableVertexAttribArray(0);
 		CNFGglEnableVertexAttribArray(1);
-		minXRglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, GeometryWorldSpaceLocations);
-		minXRglVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, GeometryColors);
+		minXRglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, Vertices);
+		minXRglVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, Colors);
 
 		glEnable( GL_BLEND );
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 		glLineWidth( 2.0 );
-		
-		printf( "%d\n", numLines );
-		glDrawElements( GL_LINES, numLines*2, GL_UNSIGNED_INT, GeometryIndices );
+
+		glDrawElements( GL_LINES, 6, GL_UNSIGNED_INT, GeometryIndices );
 
 		minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -283,6 +284,8 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 			return 0;
 		}
 	}
+
+	memcpy( &saveLayerProjectionView, projectionLayerViews, sizeof( saveLayerProjectionView ) );
 
 	layer->viewCount = viewCountOutput;
 	layer->views = projectionLayerViews;
@@ -310,7 +313,7 @@ int main()
 	if ( !tsoGetSystemId( tsoInstance, &tsoSystemId ) ) return -1;
 	if ( ( tsoNumViewConfigs = tsoEnumeratetsoViewConfigs(tsoInstance, tsoSystemId, &tsoViewConfigs ) ) == 0 ) return -1;
 
-	CNFGSetup( "TSOpenXR Example", 1024, 768 );
+	CNFGSetup( "TSOpenXR Example", 640, 360 );
 	EnumOpenGLExtensions();
 
 	int32_t major = 0;
@@ -327,6 +330,14 @@ int main()
 	if (!tsoCreateSwapchains(tsoInstance, tsoSession, tsoViewConfigs, tsoNumViewConfigs,
 						  &tsoSwapchains, &tsoSwapchainImages, &tsoSwapchainLengths )) return -1;
 	
+	#ifdef USE_WINDOWS
+	if( minXRwglSwapIntervalEXT )
+	{
+		minXRwglSwapIntervalEXT( 0 );
+	}
+	#else
+	CNFGSetVSync( 0 );
+	#endif
 
 	while ( CNFGHandleInput() )
 	{
@@ -349,6 +360,35 @@ int main()
 		{
 			OGUSleep(100000);
 		}
+
+		short w, h;
+		CNFGClearFrame();
+		CNFGGetDimensions( &w, &h );
+		glViewport( 0, 0, w, h );
+
+		char debugBuffer[8192];
+		snprintf( debugBuffer, sizeof(debugBuffer)-1, 
+			"Rect: %d,%d [%d,%d]\n"
+			"FoV:  %6.3f%6.3f%6.3f%6.3f\n"
+			"Pose: %6.3f%6.3f%6.3f\n",
+			saveLayerProjectionView.subImage.imageRect.offset.x,
+			saveLayerProjectionView.subImage.imageRect.offset.y,
+			saveLayerProjectionView.subImage.imageRect.extent.width,
+			saveLayerProjectionView.subImage.imageRect.extent.height,
+			saveLayerProjectionView.fov.angleLeft,
+			saveLayerProjectionView.fov.angleRight,
+			saveLayerProjectionView.fov.angleUp,
+			saveLayerProjectionView.fov.angleDown,
+			saveLayerProjectionView.pose.position.x,
+			saveLayerProjectionView.pose.position.y,
+			saveLayerProjectionView.pose.position.z
+		);
+		
+		CNFGPenX = 1;
+		CNFGPenY = 1;
+		CNFGColor( 0xffffffff );
+		CNFGDrawText( debugBuffer, 2 );
+		CNFGSwapBuffers();
 	}
 
 	XrResult result;
