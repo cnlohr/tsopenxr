@@ -1,5 +1,5 @@
 // Example for using tsopenxr.
-// It's like a little game.
+// Shows a bunch of debug info.
 //
 // (C) 2022 Charles Lohr (under the MIT/x11 license)
 //
