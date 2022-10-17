@@ -18,17 +18,21 @@
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
 
-// numColorDepthPairs * 2 
-GLuint * colorDepthPairs;
+GLuint * colorDepthPairs; // numColorDepthPairs * 2 
 int numColorDepthPairs;
+GLuint debugTexture;
 GLuint frameBuffer;
 
 GLuint drawProgram;
 GLuint drawProgramModelViewUniform;
+GLuint textureProgram;
+GLuint textureProgramModelViewUniform;
+GLuint textureProgramTextureUniform;
+short windowW, windowH;
 
 XrCompositionLayerProjectionView saveLayerProjectionView;
 
-
+tsoContext TSO;
 
 #ifndef GL_FRAMEBUFFER
 #define GL_FRAMEBUFFER	 0x8D40
@@ -45,6 +49,7 @@ void (*minXRglFramebufferTexture2D)( GLenum target, GLenum attachment, GLenum te
 void (*minXRglUniformMatrix4fv)( GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 void (*minXRglVertexAttribPointer)( GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
 BOOL (*minXRwglSwapIntervalEXT)(int interval);
+void (*minXRglBlitNamedFramebuffer)( GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 
 void EnumOpenGLExtensions()
 {
@@ -53,7 +58,8 @@ void EnumOpenGLExtensions()
 	minXRglFramebufferTexture2D = CNFGGetProcAddress( "glFramebufferTexture2D" );
 	minXRglUniformMatrix4fv = CNFGGetProcAddress( "glUniformMatrix4fv" );
 	minXRglVertexAttribPointer = CNFGGetProcAddress( "glVertexAttribPointer" );	
-	minXRwglSwapIntervalEXT = CNFGGetProcAddress( "wglSwapIntervalEXT" );	
+	minXRwglSwapIntervalEXT = CNFGGetProcAddress( "wglSwapIntervalEXT" );
+	minXRglBlitNamedFramebuffer = CNFGGetProcAddress( "glBlitNamedFramebuffer" );
 }
 
 
@@ -81,6 +87,40 @@ int SetupRendering()
 	drawProgramModelViewUniform = CNFGglGetUniformLocation ( drawProgram , "modelViewProjMatrix" );
 	CNFGglBindAttribLocation( drawProgram, 0, "vPos" );
 	CNFGglBindAttribLocation( drawProgram, 1, "vColor" );
+
+	textureProgram = CNFGGLInternalLoadShader(
+		"#version 100\n"
+		"uniform mat4 modelViewProjMatrix;"
+		"attribute vec3 vPos;"
+		"attribute vec2 vUV;"
+		"varying vec2 uv;"
+		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); uv = vUV; }",
+
+		"varying vec2 uv;"
+		"sampler2D texture;"
+		"void main() { gl_FragColor = vec4(uv, 1.0, 1.0); }" 
+	);
+	if( textureProgram <= 0 )
+	{
+		TSOPENXR_ERROR( "Error: Cannot load shader\n" );
+		return 0;
+	}
+	CNFGglUseProgram( textureProgram );
+	textureProgramModelViewUniform = CNFGglGetUniformLocation ( textureProgram , "modelViewProjMatrix" );
+	textureProgramTextureUniform = CNFGglGetUniformLocation ( textureProgram , "texture" );
+	CNFGglBindAttribLocation( textureProgram, 0, "vPos" );
+	CNFGglBindAttribLocation( textureProgram, 1, "vUV" );
+
+	// Generate a texture to copy the 
+	glGenTextures(1, &debugTexture);
+	glBindTexture(GL_TEXTURE_2D, debugTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0 );
+
 	return glGetError() == 0;
 }
 
@@ -102,17 +142,17 @@ uint32_t CreateDepthTexture(uint32_t colorTexture)
 	return depthTexture;
 }
 
-uint32_t GetDepthTextureFromColorTexture( uint32_t tex )
+uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture )
 {
 	int i;
 	for( i = 0; i < numColorDepthPairs; i++ )
 	{
-		if( colorDepthPairs[i*2] == tex )
+		if( colorDepthPairs[i*2] == colorTexture )
 			return colorDepthPairs[i*2+1];
 	}
 	colorDepthPairs = realloc( colorDepthPairs, (numColorDepthPairs+1)*2*sizeof(uint32_t) );
-	colorDepthPairs[numColorDepthPairs*2+0] = tex;
-	int ret = colorDepthPairs[numColorDepthPairs*2+1] = CreateDepthTexture( tex );
+	colorDepthPairs[numColorDepthPairs*2+0] = colorTexture;
+	int ret = colorDepthPairs[numColorDepthPairs*2+1] = CreateDepthTexture( colorTexture );
 	numColorDepthPairs++;
 	return ret;
 }
@@ -120,94 +160,20 @@ uint32_t GetDepthTextureFromColorTexture( uint32_t tex )
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-static void MultiplyMat(float* result, const float* a, const float* b)
-{
-    result[0] = a[0] * b[0] + a[4] * b[1] + a[8] * b[2] + a[12] * b[3];
-    result[1] = a[1] * b[0] + a[5] * b[1] + a[9] * b[2] + a[13] * b[3];
-    result[2] = a[2] * b[0] + a[6] * b[1] + a[10] * b[2] + a[14] * b[3];
-    result[3] = a[3] * b[0] + a[7] * b[1] + a[11] * b[2] + a[15] * b[3];
-
-    result[4] = a[0] * b[4] + a[4] * b[5] + a[8] * b[6] + a[12] * b[7];
-    result[5] = a[1] * b[4] + a[5] * b[5] + a[9] * b[6] + a[13] * b[7];
-    result[6] = a[2] * b[4] + a[6] * b[5] + a[10] * b[6] + a[14] * b[7];
-    result[7] = a[3] * b[4] + a[7] * b[5] + a[11] * b[6] + a[15] * b[7];
-
-    result[8] = a[0] * b[8] + a[4] * b[9] + a[8] * b[10] + a[12] * b[11];
-    result[9] = a[1] * b[8] + a[5] * b[9] + a[9] * b[10] + a[13] * b[11];
-    result[10] = a[2] * b[8] + a[6] * b[9] + a[10] * b[10] + a[14] * b[11];
-    result[11] = a[3] * b[8] + a[7] * b[9] + a[11] * b[10] + a[15] * b[11];
-
-    result[12] = a[0] * b[12] + a[4] * b[13] + a[8] * b[14] + a[12] * b[15];
-    result[13] = a[1] * b[12] + a[5] * b[13] + a[9] * b[14] + a[13] * b[15];
-    result[14] = a[2] * b[12] + a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
-    result[15] = a[3] * b[12] + a[7] * b[13] + a[11] * b[14] + a[15] * b[15];
-}
-
-static void InvertOrthogonalMat(float* result, float* src)
-{
-    result[0] = src[0];
-    result[1] = src[4];
-    result[2] = src[8];
-    result[3] = 0.0f;
-    result[4] = src[1];
-    result[5] = src[5];
-    result[6] = src[9];
-    result[7] = 0.0f;
-    result[8] = src[2];
-    result[9] = src[6];
-    result[10] = src[10];
-    result[11] = 0.0f;
-    result[12] = -(src[0] * src[12] + src[1] * src[13] + src[2] * src[14]);
-    result[13] = -(src[4] * src[12] + src[5] * src[13] + src[6] * src[14]);
-    result[14] = -(src[8] * src[12] + src[9] * src[13] + src[10] * src[14]);
-    result[15] = 1.0f;
-}
-
-
-int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-		 XrSpace tsoStageSpace, XrTime predictedDisplayTime, XrCompositionLayerProjection * layer, XrCompositionLayerProjectionView * projectionLayerViews,
-		 XrView * views, int viewCountOutput, void * opaque )
+int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLayerProjectionView * projectionLayerViews, int viewCountOutput )
 {
 	XrResult  result;
-
-	memset( projectionLayerViews, 0, sizeof( XrCompositionLayerProjectionView ) * viewCountOutput );
-
 
 	// Render view to the appropriate part of the swapchain image.
 	for (uint32_t i = 0; i < viewCountOutput; i++)
 	{
-		// Each view has a separate swapchain which is acquired, rendered to, and released.
-		const tsoSwapchainInfo * viewSwapchain = tsoSwapchains + i;
-
-		XrSwapchainImageAcquireInfo ai = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
-		uint32_t swapchainImageIndex;
-		result = xrAcquireSwapchainImage(viewSwapchain->handle, &ai, &swapchainImageIndex);
-		if (!tsoCheck(tsoInstance, result, "xrAquireSwapchainImage"))
-		{
-			return 0;
-		}
-
-		XrSwapchainImageWaitInfo wi = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-		wi.timeout = XR_INFINITE_DURATION;
-		result = xrWaitSwapchainImage(viewSwapchain->handle, &wi);
-		if (!tsoCheck(tsoInstance, result, "xrWaitSwapchainImage"))
-		{
-			return 0;
-		}
-		
 		XrCompositionLayerProjectionView * layerView = projectionLayerViews + i;
+		uint32_t swapchainImageIndex;
 
-		layerView->type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-		layerView->pose = views[i].pose;
-		layerView->fov = views[i].fov;
-		layerView->subImage.swapchain = viewSwapchain->handle;
-		layerView->subImage.imageRect.offset.x = 0;
-		layerView->subImage.imageRect.offset.y = 0;
-		layerView->subImage.imageRect.extent.width = viewSwapchain->width;
-		layerView->subImage.imageRect.extent.height = viewSwapchain->height;
-			
-		const XrSwapchainImageOpenGLKHR * swapchainImage = &tsoSwapchainImages[i][swapchainImageIndex];
-
+		// Each view has a separate swapchain which is acquired, rendered to, and released.
+		tsoAcquireSwapchain( ctx, i, &swapchainImageIndex );		
+		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[i][swapchainImageIndex];
+		
 		uint32_t colorTexture = swapchainImage->image;
 		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture );
 
@@ -221,7 +187,7 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
 		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
-		glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
+		glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
 		glClearDepth(1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -235,18 +201,13 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 		const float nearZ = 0.05f;
 		const float farZ = 100.0f;
 		float projMat[16];
-		tsoUtilInitProjectionMat(projMat, GRAPHICS_OPENGL, tanLeft, tanRight, tanUp, tanDown, nearZ, farZ);
-
-		// compute view matrix by inverting the pose
 		float invViewMat[16];
-		tsoUtilInitPoseMat(invViewMat, &layerView->pose);
-
 		float viewMat[16];
-		InvertOrthogonalMat(viewMat, invViewMat);
-
 		float modelViewProjMat[16];
-		MultiplyMat(modelViewProjMat, projMat, viewMat);
+		tsoUtilInitProjectionMat(&layerView->pose, projMat, invViewMat, viewMat, modelViewProjMat, GRAPHICS_OPENGL, tanLeft, tanRight, tanUp, tanDown, nearZ, farZ);
 
+		// Actually start rendering
+		
 		CNFGglUseProgram( drawProgram );
 		minXRglUniformMatrix4fv( drawProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
 
@@ -274,64 +235,64 @@ int RenderLayer(XrInstance tsoInstance, XrSession tsoSession, XrViewConfiguratio
 		glLineWidth( 2.0 );
 
 		glDrawElements( GL_LINES, 6, GL_UNSIGNED_INT, GeometryIndices );
-
+		
+		
+		
+		
+		CNFGglUseProgram( textureProgram );
+		minXRglUniformMatrix4fv( textureProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
+		
+		
+		
 		minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		XrSwapchainImageReleaseInfo ri = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
-		result = xrReleaseSwapchainImage( viewSwapchain->handle, &ri );
-		if (!tsoCheck(tsoInstance, result, "xrReleaseSwapchainImage"))
+		// Show debug view.
+		if( i == 0 )
 		{
-			return 0;
+			int targh = layerView->subImage.imageRect.extent.width*windowH/windowW;
+			int thofs = (layerView->subImage.imageRect.extent.height-targh)/2;
+			minXRglBlitNamedFramebuffer( frameBuffer, 0, 0, thofs, layerView->subImage.imageRect.extent.width, targh+thofs, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_NEAREST );
 		}
+
+		tsoReleaseSwapchain( &TSO, i );
 	}
 
 	memcpy( &saveLayerProjectionView, projectionLayerViews, sizeof( saveLayerProjectionView ) );
 
-	layer->viewCount = viewCountOutput;
-	layer->views = projectionLayerViews;
-
-	return 1;
+	return 0;
 }
 
 
 int main()
 {
-	XrResult result;
+	int r;
 
 	// Tell windows we want to use VT100 terminal color codes.
 	#ifdef USE_WINDOWS
 	system("");
 	#endif
 
-	if( ( tsoNumExtensions = EnumerateExtensions( &tsoExtensionProps ) ) == 0 ) return -1;
-
-	if( ! tsoExtensionSupported( tsoExtensionProps, tsoNumExtensions, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME ) )
-	{
-		TSOPENXR_ERROR("XR_KHR_opengl_enable not supported!\n");
-		return 1;
-	}
-
-	if ( !tsoCreateInstance( &tsoInstance, "TSOpenXR Example" ) ) return -1;
-	if ( !tsoGetSystemId( tsoInstance, &tsoSystemId ) ) return -1;
-	if ( ( tsoNumViewConfigs = tsoEnumeratetsoViewConfigs(tsoInstance, tsoSystemId, &tsoViewConfigs ) ) == 0 ) return -1;
-
 	CNFGSetup( "TSOpenXR Example", 640, 360 );
-	EnumOpenGLExtensions();
 
 	int32_t major = 0;
 	int32_t minor = 0;
 	glGetIntegerv(GL_MAJOR_VERSION, &major);
 	glGetIntegerv(GL_MINOR_VERSION, &minor);
 	
-	if ( !tsoCreateSession(tsoInstance, tsoSystemId, &tsoSession, major, minor ) ) return -1;
-	if ( !tsoDefaultCreateActions(tsoInstance, tsoSystemId, tsoSession, &tsoActionSet ) ) return -1;
-	if ( !tsoCreateStageSpace(tsoInstance, tsoSystemId, tsoSession, &tsoStageSpace ) ) return -1;
+	if( ( r = tsoInitialize( &TSO, major, minor, TSO_DO_DEBUG, "TSOpenXR Example", 0 ) ) ) return r;
+	
+	// Assign a layer render function.
+	TSO.tsoRenderLayer = RenderLayer;
+
+	EnumOpenGLExtensions();
 
 	if( SetupRendering() == 0 ) return -1;
 	
-	if (!tsoCreateSwapchains(tsoInstance, tsoSession, tsoViewConfigs, tsoNumViewConfigs,
-						  &tsoSwapchains, &tsoSwapchainImages, &tsoSwapchainLengths )) return -1;
+	if ( ( r = tsoDefaultCreateActions( &TSO ) ) ) return r;
 	
+	if ( ( r = tsoCreateSwapchains( &TSO ) ) ) return r;
+	
+	// Disable vsync, on appropriate system.
 	#ifdef USE_WINDOWS
 	if( minXRwglSwapIntervalEXT )
 	{
@@ -343,9 +304,9 @@ int main()
 
 	while ( CNFGHandleInput() )
 	{
-		tsoHandleLoop( tsoInstance );
+		tsoHandleLoop( &TSO );
 
-		if (!tsoSessionReady)
+		if (!TSO.tsoSessionReady)
 		{
 			short w, h;
 			CNFGClearFrame();
@@ -360,24 +321,24 @@ int main()
 			continue;
 		}
 
-		if (!tsoSyncInput(tsoInstance, tsoSession, tsoActionSet))
+		if ( ( r = tsoSyncInput( &TSO ) ) )
 		{
-			return -1;
+			return r;
 		}
 
-		if (!tsoRenderFrame(tsoInstance, tsoSession, tsoViewConfigs, tsoNumViewConfigs,
-						 tsoStageSpace, RenderLayer, 0 ) )
-		{
-			return -1;
-		}
-
-		short w, h;
 		CNFGClearFrame();
-		CNFGGetDimensions( &w, &h );
-		glViewport( 0, 0, w, h );
+		CNFGGetDimensions( &windowW, &windowH );
 
-		char debugBuffer[8192];
-		snprintf( debugBuffer, sizeof(debugBuffer)-1, 
+		if ( ( r = tsoRenderFrame( &TSO ) ) )
+		{
+			return r;
+		}
+
+		glViewport( 0, 0, windowW, windowH );
+
+		char debugBuffer[16384];
+		char * dbg = debugBuffer;
+		dbg += snprintf( dbg, sizeof(debugBuffer)-1-(dbg-debugBuffer), 
 			"Rect: %d,%d [%d,%d]\n"
 			"FoV:  %6.3f%6.3f%6.3f%6.3f\n"
 			"Pose: %6.3f%6.3f%6.3f\n\n"
@@ -395,61 +356,55 @@ int main()
 			saveLayerProjectionView.pose.position.z
 		);
 		
-		CNFGPenX = 1;
-		CNFGPenY = 1;
-		CNFGColor( 0xffffffff );
-		CNFGDrawText( debugBuffer, 2 );
-
 		XrSpaceLocation handLocations[2] = { 0 };
 		handLocations[0].type = XR_TYPE_SPACE_LOCATION;
 		handLocations[1].type = XR_TYPE_SPACE_LOCATION;
 		XrResult handResults[2];
-		handResults[0] = xrLocateSpace( tsoStageSpace, tsoHandSpace[0], tsoPredictedDisplayTime, &handLocations[0] );
-		handResults[1] = xrLocateSpace( tsoStageSpace, tsoHandSpace[1], tsoPredictedDisplayTime, &handLocations[1] );
+		handResults[0] = xrLocateSpace( TSO.tsoHandSpace[0], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[0] );
+		handResults[1] = xrLocateSpace( TSO.tsoHandSpace[1], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[1] );
 
-		snprintf( debugBuffer, sizeof(debugBuffer)-1, 
+		dbg += snprintf( dbg, sizeof(debugBuffer)-1-(dbg-debugBuffer), 
 			"Hand1 %6.3f%6.3f%6.3f %d %d\n"
 			"Hand2 %6.3f%6.3f%6.3f %d %d\n",
 			handLocations[0].pose.position.x,
 			handLocations[0].pose.position.y,
 			handLocations[0].pose.position.z,
 			handResults[0],
-			handLocations[0].locationFlags,
+			(int)handLocations[0].locationFlags,
 			handLocations[1].pose.position.x,
 			handLocations[1].pose.position.y,
 			handLocations[1].pose.position.z,
 			handResults[1],
-			handLocations[1].locationFlags
+			(int)handLocations[1].locationFlags
 		);
 
+
+		XrActionStateFloat floatState[2];
+		XrActionStateGetInfo actionGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+		actionGetInfo.action = TSO.triggerAction;
+		actionGetInfo.subactionPath = TSO.handPath[0];
+		handResults[0] = tsoCheck( &TSO, xrGetActionStateFloat( TSO.tsoSession, &actionGetInfo, floatState + 0 ), "xrGetActionStateFloat1" );
+		actionGetInfo.subactionPath = TSO.handPath[1];
+		handResults[1] = tsoCheck( &TSO, xrGetActionStateFloat( TSO.tsoSession, &actionGetInfo, floatState + 1 ), "xrGetActionStateFloat2" );
+		dbg += snprintf( dbg, sizeof(debugBuffer)-1-(dbg-debugBuffer), 
+			"Input1 %d %d %f\n"
+			"Input2 %d %d %f\n",
+			handResults[0], floatState[0].isActive, floatState[0].currentState,
+			handResults[1], floatState[1].isActive, floatState[1].currentState );
+			
 		CNFGPenX = 1;
-		CNFGPenY = 100;
+		CNFGPenY = 1;
 		CNFGColor( 0xffffffff );
 		CNFGDrawText( debugBuffer, 2 );
+
+		glReadBuffer(GL_FRONT);
+		glCopyTexImage2D( debugTexture, 0, GL_RGBA, 0, 0, windowW, windowH, 0 );
 
 		CNFGSwapBuffers();
 	}
 
-	int i;
-	for( i = 0; i < tsoNumViewConfigs; i++ )
-	{
-		result = xrDestroySwapchain(tsoSwapchains[i].handle);
-		tsoCheck(tsoInstance, result, "xrDestroySwapchain");
-	}
 
-	result = xrDestroySpace(tsoStageSpace);
-	tsoCheck(tsoInstance, result, "xrDestroySpace");
-
-	result = xrEndSession(tsoSession);
-	tsoCheck(tsoInstance, result, "xrEndSession");
-
-	result = xrDestroySession(tsoSession);
-	tsoCheck(tsoInstance, result, "xrDestroySession");
-
-	result = xrDestroyInstance(tsoInstance);
-	tsoCheck(XR_NULL_HANDLE, result, "xrDestroyInstance");
-
-	return 0;
+	return tsoTeardown( &TSO );
 }
 
 //For rawdraw (we don't use this)

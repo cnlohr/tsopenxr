@@ -1,17 +1,21 @@
+/**
+	Truly Simple C OpenXR header-only library
 
-// Very basic C OpenXR header-only library
-// (based on https://github.com/cnlohr/openxr-minimal)
-// (based on https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp)
-// 
-// Portions are: 
-//	Copyright (c) 2020 Anthony J. Thibault
-// The rest is:
-//	Copyright (c) 2022 Charles Lohr
-//
-// Both under the MIT/x11 License.
-//
-// To use this library in a given project's C file:
-//  #define TSOPENXR_IMPLEMENTATION
+	(based on https://github.com/cnlohr/openxr-minimal)
+	(based on https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp)
+	
+	Portions are: 
+		Copyright (c) 2020 Anthony J. Thibault
+	The rest is:
+		Copyright (c) 2022 Charles Lohr
+	
+	Both under the MIT/x11 License.
+	
+	To use this library in a given project's C file:
+	#define TSOPENXR_IMPLEMENTATION
+*/
+	
+	
 
 #ifndef _TSOPENXR_H
 #define _TSOPENXR_H
@@ -33,21 +37,6 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
-extern XrExtensionProperties * tsoExtensionProps;
-extern int tsoNumExtensions;
-extern XrApiLayerProperties * tsoLayerProps;
-extern int tsoNumLayerProps;
-extern XrViewConfigurationView * tsoViewConfigs;
-extern int tsoNumViewConfigs;
-extern XrSpace tsoHandSpace[2];
-extern XrTime tsoPredictedDisplayTime;
-
-extern XrInstance tsoInstance;
-extern XrSystemId tsoSystemId;
-extern XrSession tsoSession;
-extern XrActionSet tsoActionSet;
-extern XrSpace tsoStageSpace;
-
 typedef struct
 {
 	XrSwapchain handle;
@@ -55,20 +44,62 @@ typedef struct
 	int32_t height;
 } tsoSwapchainInfo;
 
-extern tsoSwapchainInfo * tsoSwapchains;
-extern XrSwapchainImageOpenGLKHR ** tsoSwapchainImages; //[tsoViewConfigsCount][tsoSwapchainLengths[...]]
-extern uint32_t * tsoSwapchainLengths; //[tsoViewConfigsCount]
 
-typedef int (*tsoRenderLayer_t)(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-		 XrSpace tsoStageSpace,  XrTime predictedDisplayTime, XrCompositionLayerProjection * layer, XrCompositionLayerProjectionView * projectionLayerViews,
-		 XrView * views, int viewCountOutput, void * opaque );
+struct tsoContext_t;
 
+// return zero to indicate layer submissions are good.
+// Nonzero will be a "no-render" for the layer.
+typedef int (*tsoRenderLayerFunction_t)(struct tsoContext_t * ctx, XrTime predictedDisplayTime, XrCompositionLayerProjectionView * projectionLayerViews, int viewCountOutput );
 
-// For debugging.
-extern int tsoPrintAll;
+typedef struct tsoContext_t
+{
+	XrExtensionProperties * tsoExtensionProps;
+	int tsoNumExtensions;
+	XrApiLayerProperties * tsoLayerProps;
+	int tsoNumLayerProps;
+	XrViewConfigurationView * tsoViewConfigs;
+	int tsoNumViewConfigs;
+		
+	XrSpace tsoHandSpace[2];
+	XrTime tsoPredictedDisplayTime;
+	
+	XrInstance tsoInstance;
+	XrSystemId tsoSystemId;
+	XrSession tsoSession;
+	XrActionSet tsoActionSet;
+	XrSpace tsoStageSpace;	
 
-extern int tsoSessionReady;
-extern XrSessionState tsoXRState;
+	// Actions
+	XrPath handPath[2];
+
+	XrPath selectPath[2];
+	XrPath squeezeValuePath[2];
+	XrPath squeezeClickPath[2];
+	XrPath triggerValuePath[2];
+	XrPath triggerClickPath[2];
+	XrPath posePath[2];
+	XrPath hapticPath[2];
+	XrPath menuClickPath[2];
+
+	XrAction grabAction;
+	XrAction triggerAction;
+	XrAction poseAction;
+	XrAction vibrateAction;
+	XrAction menuAction;
+	
+	tsoSwapchainInfo * tsoSwapchains;
+	XrSwapchainImageOpenGLKHR ** tsoSwapchainImages; //[tsoNumViewConfigs][tsoSwapchainLengths[...]]
+	uint32_t * tsoSwapchainLengths; //[tsoNumViewConfigs]
+	
+	// For debugging.
+	int tsoPrintAll;
+	
+	int tsoSessionReady;
+	XrSessionState tsoXRState;
+	tsoRenderLayerFunction_t tsoRenderLayer;
+	void * opaque;
+} tsoContext;
+
 
 // This will compile-in the extra debug stuff.
 #ifndef TSOPENXR_ENABLE_DEBUG
@@ -83,38 +114,46 @@ extern XrSessionState tsoXRState;
 #define TSOPENXR_INFO printf
 #endif
 
-int tsoCheck( XrInstance tsoInstance, XrResult result, const char* str );
-int tsoExtensionSupported( XrExtensionProperties * extensions, int extensionsCount, const char* extensionName );
-int tsoEnumerateLayers( XrApiLayerProperties ** tsoLayerProps );
-int tsoCreateInstance( XrInstance * tsoInstance, const char * appname );
-int tsoGetSystemId( XrInstance tsoInstance, XrSystemId * tsoSystemId );
-int tsoEnumeratetsoViewConfigs( XrInstance tsoInstance, XrSystemId tsoSystemId, XrViewConfigurationView ** tsoViewConfigs );
-int tsoCreateSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession * tsoSession, uint32_t openglMajor, uint32_t openglMinor );
+// Init Flags
+#define TSO_DO_DEBUG 1
 
-// You almost certainly will want to override this!
-int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession, XrActionSet * tsoActionSet);
+// Most functions return 0 on success.
+// nonzero on failure.
+int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, int flags, const char * appname, void * opaque );
 
-int tsoCreateStageSpace(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession, XrSpace * tsoStageSpace);
-int tsoBeginSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession);
-int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
-					  XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-					  tsoSwapchainInfo ** tsoSwapchains, // Will allocate to tsoViewConfigsCount
-					  XrSwapchainImageOpenGLKHR *** tsoSwapchainImages,
-					  uint32_t ** tsoSwapchainLengths); // Actually array of pointers to pointers
-int tsoSyncInput( XrInstance tsoInstance, XrSession tsoSession, XrActionSet tsoActionSet );
+int tsoInitAction( tsoContext * ctx, XrActionType type, const char * action_name, const char * localized_name, XrAction * action );
+int tsoDefaultCreateActions( tsoContext * ctx );
 
-int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-				 XrSpace tsoStageSpace, tsoRenderLayer_t RenderLayer, void * opaque );
+int tsoHandleLoop( tsoContext * ctx );
+int tsoCreateSwapchains( tsoContext * ctx );
+int tsoSyncInput( tsoContext * ctx );
+int tsoRenderFrame( tsoContext * ctx );
+int tsoAcquireSwapchain( tsoContext * ctx, int swapchain, uint32_t * swapchainImageIndex );
+int tsoReleaseSwapchain( tsoContext * ctx, int swapchain );
+int tsoTeardown( tsoContext * ctx );
 
 // Utility functions
-
 void tsoUtilInitPoseMat(float* result, const XrPosef * pose);
 enum GraphicsAPI { GRAPHICS_VULKAN, GRAPHICS_OPENGL, GRAPHICS_OPENGL_ES, GRAPHICS_D3D };
-void tsoUtilInitProjectionMat(float* result, enum GraphicsAPI graphicsApi, const float tanAngleLeft,
-							  const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
-							  const float nearZ, const float farZ);
+void tsoUtilInitProjectionMat(const XrPosef * pose, float* projMat, float * invViewMat, float * viewMat, float * ModelViewProjMat,
+								enum GraphicsAPI graphicsApi, const float tanAngleLeft,
+								const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
+								const float nearZ, const float farZ);
+void tsoInvertOrthogonalMat(float* result, float* src);
+void tsoMultiplyMat(float* result, const float* a, const float* b);
 
 
+// Internal functions.
+int tsoCheck( tsoContext * ctx, XrResult result, const char* str );
+int tsoEnumeratetsoViewConfigs( tsoContext * ctx );
+int tsoEnumerateExtensions( tsoContext * ctx );
+int tsoExtensionSupported( tsoContext * ctx, const char* extensionName); // Returns 1 if supported, 0 if not.
+int tsoEnumerateLayers( tsoContext * ctx );
+int tsoCreateInstance( tsoContext * ctx, const char * appname );
+int tsoGetSystemId( tsoContext * ctx );
+int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMinor );
+int tsoCreateStageSpace( tsoContext * ctx );
+int tsoBeginSession( tsoContext * ctx );
 
 #ifdef TSOPENXR_IMPLEMENTATION
 
@@ -139,37 +178,40 @@ void tsoUtilInitProjectionMat(float* result, enum GraphicsAPI graphicsApi, const
 #define GL_SRGB8 0x8C41
 #endif
 
-
-XrExtensionProperties * tsoExtensionProps;
-int tsoNumExtensions;
-XrApiLayerProperties * tsoLayerProps;
-int tsoNumLayerProps;
-XrViewConfigurationView * tsoViewConfigs;
-int tsoNumViewConfigs;
-
-XrInstance tsoInstance = XR_NULL_HANDLE;
-XrSystemId tsoSystemId = XR_NULL_HANDLE;
-XrSession tsoSession = XR_NULL_HANDLE;
-XrActionSet tsoActionSet = XR_NULL_HANDLE;
-XrSpace tsoStageSpace = XR_NULL_HANDLE;
-XrSpace tsoHandSpace[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
-XrTime tsoPredictedDisplayTime;
-
-tsoSwapchainInfo * tsoSwapchains;
-XrSwapchainImageOpenGLKHR ** tsoSwapchainImages;
-uint32_t * tsoSwapchainLengths;
-
-// For debugging.
-int tsoPrintAll = 1;
-
-int tsoSessionReady = 0;
-XrSessionState tsoXRState = XR_SESSION_STATE_UNKNOWN;
-
-int tsoCheck( XrInstance tsoInstance, XrResult result, const char* str )
+int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, int flags, const char * appname, void * opaque )
 {
-	if( XR_SUCCEEDED( result ))
+	int r;
+	memset( ctx, 0, sizeof( *ctx ) );
+	ctx->opaque = opaque;
+	ctx->tsoPrintAll = !!(flags & TSO_DO_DEBUG);
+	if( ( tsoEnumerateExtensions( ctx ) ) )
 	{
 		return 1;
+	}
+
+	if( ! tsoExtensionSupported( ctx, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME ) )
+	{
+		TSOPENXR_ERROR("XR_KHR_opengl_enable not supported!\n");
+		return 1;
+	}
+
+	if( ( r = tsoCreateInstance( ctx, appname ) ) ) return r;
+	if( ( r = tsoEnumerateLayers( ctx ) ) ) return r;
+	if( ( r = tsoGetSystemId( ctx ) ) ) return r;
+	if( ( r = tsoEnumeratetsoViewConfigs( ctx ) ) ) return r;
+	if( ( r = tsoCreateSession( ctx, openglMajor, openglMinor ) ) ) return r;
+	if( ( r = tsoCreateStageSpace( ctx ) ) ) return r;
+
+	return 0;
+}
+
+int tsoCheck( tsoContext * ctx, XrResult result, const char* str )
+{
+	XrInstance tsoInstance = ctx?ctx->tsoInstance:0;
+
+	if( XR_SUCCEEDED( result ))
+	{
+		return 0;
 	}
 
 	if( tsoInstance != XR_NULL_HANDLE)
@@ -182,16 +224,19 @@ int tsoCheck( XrInstance tsoInstance, XrResult result, const char* str )
 	{
 		TSOPENXR_ERROR( "%s\n", str );
 	}
-	return 0;
+	return result;
 }
 
-int EnumerateExtensions( XrExtensionProperties ** tsoExtensionProps )
+int tsoEnumerateExtensions( tsoContext * ctx )
 {
+	XrExtensionProperties ** tsoExtensionProps = &ctx->tsoExtensionProps;
+
 	XrResult result;
 	uint32_t extensionCount = 0;
 	result = xrEnumerateInstanceExtensionProperties(NULL, 0, &extensionCount, NULL);
-	if( !tsoCheck(NULL, result, "xrEnumerateInstanceExtensionProperties failed"))
-		return 0;
+
+	if( tsoCheck(NULL, result, "xrEnumerateInstanceExtensionProperties failed"))
+		return result;
 	
 	*tsoExtensionProps = realloc( *tsoExtensionProps, extensionCount * sizeof( XrExtensionProperties ) );
 	for( int i = 0; i < extensionCount; i++ )
@@ -201,11 +246,11 @@ int EnumerateExtensions( XrExtensionProperties ** tsoExtensionProps )
 	}
 
 	result = xrEnumerateInstanceExtensionProperties( NULL, extensionCount, &extensionCount, *tsoExtensionProps );
-	if( !tsoCheck( NULL, result, "xrEnumerateInstanceExtensionProperties failed" ) )
-		return 0;
+	if( tsoCheck( NULL, result, "xrEnumerateInstanceExtensionProperties failed" ) )
+		return result;
 
 #if TSOPENXR_ENABLE_DEBUG
-	if( tsoPrintAll )
+	if( ctx->tsoPrintAll )
 	{
 		TSOPENXR_INFO("%d extensions:\n", extensionCount);
 		for( uint32_t i = 0; i < extensionCount; ++i )
@@ -214,11 +259,16 @@ int EnumerateExtensions( XrExtensionProperties ** tsoExtensionProps )
 		}
 	}
 #endif
-	return extensionCount;
+
+	ctx->tsoNumExtensions = extensionCount;
+	return 0;
 }
 
-int tsoExtensionSupported( XrExtensionProperties * extensions, int extensionsCount, const char* extensionName)
+int tsoExtensionSupported( tsoContext * ctx, const char* extensionName)
 {
+	XrExtensionProperties * extensions = ctx->tsoExtensionProps;
+	int extensionsCount = ctx->tsoNumExtensions;
+	
 	int supported = 0;
 	int i;
 	for( i = 0; i < extensionsCount; i++ )
@@ -231,13 +281,15 @@ int tsoExtensionSupported( XrExtensionProperties * extensions, int extensionsCou
 	return supported;
 }
 
-int tsoEnumerateLayers( XrApiLayerProperties ** tsoLayerProps )
+int tsoEnumerateLayers( tsoContext * ctx )
 {
+	XrApiLayerProperties ** tsoLayerProps = &ctx->tsoLayerProps;
+
 	uint32_t layerCount;
 	XrResult result = xrEnumerateApiLayerProperties(0, &layerCount, NULL);
-	if( !tsoCheck(NULL, result, "xrEnumerateApiLayerProperties"))
+	if( tsoCheck(ctx, result, "xrEnumerateApiLayerProperties"))
 	{
-		return 0;
+		return result;
 	}
 
 	*tsoLayerProps = realloc( *tsoLayerProps, layerCount * sizeof(XrApiLayerProperties) );
@@ -246,12 +298,12 @@ int tsoEnumerateLayers( XrApiLayerProperties ** tsoLayerProps )
 		(*tsoLayerProps)[i].next = NULL;
 	}
 	result = xrEnumerateApiLayerProperties( layerCount, &layerCount, *tsoLayerProps );
-	if( !tsoCheck(NULL, result, "xrEnumerateApiLayerProperties"))
+	if( tsoCheck(ctx, result, "xrEnumerateApiLayerProperties"))
 	{
-		return 0;
+		return result;
 	}
 
-	if( tsoPrintAll )
+	if( ctx->tsoPrintAll )
 	{
 		TSOPENXR_INFO("%d layers:\n", layerCount);
 		for( uint32_t i = 0; i < layerCount; i++)
@@ -259,12 +311,14 @@ int tsoEnumerateLayers( XrApiLayerProperties ** tsoLayerProps )
 			TSOPENXR_INFO("	%s, %s\n", (*tsoLayerProps)[i].layerName, (*tsoLayerProps)[i].description);
 		}
 	}
-
-	return layerCount;
+	ctx->tsoNumLayerProps = layerCount;
+	return 0;
 }
 
-int tsoCreateInstance(XrInstance * tsoInstance, const char * appname )
+int tsoCreateInstance(tsoContext * ctx, const char * appname )
 {
+	XrInstance * tsoInstance = &ctx->tsoInstance;
+
 	// create openxr tsoInstance
 	XrResult result;
 	const char* const enabledExtensions[] = {XR_KHR_OPENGL_ENABLE_EXTENSION_NAME};
@@ -283,22 +337,22 @@ int tsoCreateInstance(XrInstance * tsoInstance, const char * appname )
 	ici.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
 
 	result = xrCreateInstance(&ici, tsoInstance);
-	if (!tsoCheck(NULL, result, "xrCreateInstance failed"))
+	if (tsoCheck(ctx, result, "xrCreateInstance failed"))
 	{
-		return 0;
+		return result;
 	}
 
 #if TSOPENXR_ENABLE_DEBUG
-	if ( tsoPrintAll)
+	if ( ctx->tsoPrintAll)
 	{
 		XrInstanceProperties ip;
 		ip.type = XR_TYPE_INSTANCE_PROPERTIES;
 		ip.next = NULL;
 
 		result = xrGetInstanceProperties( *tsoInstance, &ip );
-		if( !tsoCheck( *tsoInstance, result, "xrGetInstanceProperties failed" ) )
+		if( tsoCheck( ctx, result, "xrGetInstanceProperties failed" ) )
 		{
-			return 0;
+			return result;
 		}
 
 		TSOPENXR_INFO("Runtime Name: %s\n", ip.runtimeName);
@@ -308,34 +362,36 @@ int tsoCreateInstance(XrInstance * tsoInstance, const char * appname )
 			   XR_VERSION_PATCH(ip.runtimeVersion));
 	}
 #endif
-	return 1;
+	return 0;
 }
 
 
-int tsoGetSystemId(XrInstance tsoInstance, XrSystemId * tsoSystemId)
+int tsoGetSystemId( tsoContext * ctx )
 {
+	XrInstance tsoInstance = ctx->tsoInstance;
+	
 	XrResult result;
 	XrSystemGetInfo sgi;
 	sgi.type = XR_TYPE_SYSTEM_GET_INFO;
 	sgi.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 	sgi.next = NULL;
 
-	result = xrGetSystem(tsoInstance, &sgi, tsoSystemId);
-	if (!tsoCheck(tsoInstance, result, "xrGetSystemFailed"))
+	result = xrGetSystem(tsoInstance, &sgi, &ctx->tsoSystemId);
+	if (tsoCheck(ctx, result, "xrGetSystemFailed"))
 	{
-		return 0;
+		return result;
 	}
 
 #if TSOPENXR_ENABLE_DEBUG
-	if ( tsoPrintAll)
+	if ( ctx->tsoPrintAll)
 	{
 		XrSystemProperties sp = { 0 };
 		sp.type = XR_TYPE_SYSTEM_PROPERTIES;
 
-		result = xrGetSystemProperties(tsoInstance, *tsoSystemId, &sp);
-		if (!tsoCheck(tsoInstance, result, "xrGetSystemProperties failed"))
+		result = xrGetSystemProperties(tsoInstance, ctx->tsoSystemId, &sp);
+		if (tsoCheck(ctx, result, "xrGetSystemProperties failed"))
 		{
-			return 0;
+			return result;
 		}
 
 		TSOPENXR_INFO("System properties for system \"%s\":\n", sp.systemName);
@@ -347,54 +403,63 @@ int tsoGetSystemId(XrInstance tsoInstance, XrSystemId * tsoSystemId)
 	}
 #endif
 
-	return 1;
+	return 0;
 }
 
-int tsoEnumeratetsoViewConfigs(XrInstance tsoInstance, XrSystemId tsoSystemId, XrViewConfigurationView ** tsoViewConfigs)
+int tsoEnumeratetsoViewConfigs( tsoContext * ctx )
 {
+	
+	XrInstance tsoInstance = ctx->tsoInstance;
+	XrSystemId tsoSystemId = ctx->tsoSystemId;
+	
 	XrResult result;
 	uint32_t viewCount;
 	XrViewConfigurationType stereoViewConfigType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
 	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, 0, &viewCount, NULL);
-	if (!tsoCheck(tsoInstance, result, "xrEnumerateViewConfigurationViews"))
+	if (tsoCheck(ctx, result, "xrEnumerateViewConfigurationViews"))
 	{
-		return 0;
+		return result;
 	}
 
-	*tsoViewConfigs = realloc( *tsoViewConfigs, viewCount * sizeof(XrViewConfigurationView) );
+	XrViewConfigurationView * tsoViewConfigs = ctx->tsoViewConfigs = realloc( ctx->tsoViewConfigs, viewCount * sizeof(XrViewConfigurationView) );
 	for (uint32_t i = 0; i < viewCount; i++)
 	{
-		(*tsoViewConfigs)[i].type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
-		(*tsoViewConfigs)[i].next = NULL;
+		tsoViewConfigs[i].type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
+		tsoViewConfigs[i].next = NULL;
 	}
 
-	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, viewCount, &viewCount, *tsoViewConfigs);
-	if (!tsoCheck(tsoInstance, result, "xrEnumerateViewConfigurationViews"))
+	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, viewCount, &viewCount, tsoViewConfigs);
+	if (tsoCheck(ctx, result, "xrEnumerateViewConfigurationViews"))
 	{
-		return 0;
+		return result;
 	}
 
 #if TSOPENXR_ENABLE_DEBUG
-	if (tsoPrintAll)
+	if (ctx->tsoPrintAll)
 	{
 		TSOPENXR_INFO("%d tsoViewConfigs:\n", viewCount);
 		for (uint32_t i = 0; i < viewCount; i++)
 		{
 			TSOPENXR_INFO("	tsoViewConfigs[%d]:\n", i);
-			TSOPENXR_INFO("		recommendedImageRectWidth: %d\n", (*tsoViewConfigs)[i].recommendedImageRectWidth);
-			TSOPENXR_INFO("		maxImageRectWidth: %d\n", (*tsoViewConfigs)[i].maxImageRectWidth);
-			TSOPENXR_INFO("		recommendedImageRectHeight: %d\n", (*tsoViewConfigs)[i].recommendedImageRectHeight);
-			TSOPENXR_INFO("		maxImageRectHeight: %d\n", (*tsoViewConfigs)[i].maxImageRectHeight);
-			TSOPENXR_INFO("		recommendedSwapchainSampleCount: %d\n", (*tsoViewConfigs)[i].recommendedSwapchainSampleCount);
-			TSOPENXR_INFO("		maxSwapchainSampleCount: %d\n", (*tsoViewConfigs)[i].maxSwapchainSampleCount);
+			TSOPENXR_INFO("		recommendedImageRectWidth: %d\n", tsoViewConfigs[i].recommendedImageRectWidth);
+			TSOPENXR_INFO("		maxImageRectWidth: %d\n", tsoViewConfigs[i].maxImageRectWidth);
+			TSOPENXR_INFO("		recommendedImageRectHeight: %d\n", tsoViewConfigs[i].recommendedImageRectHeight);
+			TSOPENXR_INFO("		maxImageRectHeight: %d\n", tsoViewConfigs[i].maxImageRectHeight);
+			TSOPENXR_INFO("		recommendedSwapchainSampleCount: %d\n", tsoViewConfigs[i].recommendedSwapchainSampleCount);
+			TSOPENXR_INFO("		maxSwapchainSampleCount: %d\n", tsoViewConfigs[i].maxSwapchainSampleCount);
 		}
 	}
 #endif
-	return viewCount;
+
+	ctx->tsoNumViewConfigs = viewCount;
+	return 0;
 }
 
-int tsoCreateSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession * tsoSession, uint32_t openglMajor, uint32_t openglMinor )
+int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMinor )
 {
+	XrInstance tsoInstance = ctx->tsoInstance;
+	XrSystemId tsoSystemId = ctx->tsoSystemId;
+	
 	XrResult result;
 
 	// check if opengl version is sufficient.
@@ -404,21 +469,21 @@ int tsoCreateSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession *
 		reqs.next = NULL;
 		PFN_xrGetOpenGLGraphicsRequirementsKHR pfnGetOpenGLGraphicsRequirementsKHR = NULL;
 		result = xrGetInstanceProcAddr(tsoInstance, "xrGetOpenGLGraphicsRequirementsKHR", (PFN_xrVoidFunction *)&pfnGetOpenGLGraphicsRequirementsKHR);
-		if (!tsoCheck(tsoInstance, result, "xrGetInstanceProcAddr"))
+		if (tsoCheck(ctx, result, "xrGetInstanceProcAddr"))
 		{
-			return 0;
+			return result;
 		}
 
 		result = pfnGetOpenGLGraphicsRequirementsKHR(tsoInstance, tsoSystemId, &reqs);
-		if (!tsoCheck(tsoInstance, result, "GetOpenGLGraphicsRequirementsPKR"))
+		if (tsoCheck(ctx, result, "GetOpenGLGraphicsRequirementsPKR"))
 		{
-			return 0;
+			return result;
 		}
 
 		const XrVersion desiredApiVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
 
 #if TSOPENXR_ENABLE_DEBUG
-		if (tsoPrintAll)
+		if (ctx->tsoPrintAll)
 		{
 			TSOPENXR_INFO("current OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(desiredApiVersion),
 				   XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
@@ -429,7 +494,7 @@ int tsoCreateSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession *
 		if (reqs.minApiVersionSupported > desiredApiVersion)
 		{
 			TSOPENXR_INFO("Runtime does not support desired Graphics API and/or version\n");
-			return 0;
+			return result;
 		}
 	}
 
@@ -449,18 +514,40 @@ int tsoCreateSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession *
 	sci.next = &glBinding;
 	sci.systemId = tsoSystemId;
 
-	result = xrCreateSession(tsoInstance, &sci, tsoSession);
-	if (!tsoCheck(tsoInstance, result, "xrCreateSession"))
+	result = xrCreateSession(ctx->tsoInstance, &sci, &ctx->tsoSession);
+	if (tsoCheck(ctx, result, "xrCreateSession"))
 	{
-		return 0;
+		return result;
 	}
 	
-	return 1;
+	return 0;
 }
 
-
-int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession, XrActionSet * tsoActionSet)
+int tsoInitAction( tsoContext * ctx, XrActionType type, const char * action_name, const char * localized_name, XrAction * action )
 {
+	XrResult result;
+	XrActionCreateInfo aci;
+	aci.type = XR_TYPE_ACTION_CREATE_INFO;
+	aci.next = NULL;
+	aci.actionType = type;
+	strcpy(aci.actionName, action_name );
+	strcpy(aci.localizedActionName, localized_name );
+	aci.countSubactionPaths = 2;
+	aci.subactionPaths = ctx->handPath;
+	result = xrCreateAction(ctx->tsoActionSet, &aci, action );
+	if( result )
+	{
+		char actionError[1024];
+		snprintf( actionError, sizeof(actionError)-1, "xrCreateAction %s" );
+		tsoCheck(ctx, result, actionError);
+	}
+	return result;
+}
+
+int tsoDefaultCreateActions( tsoContext * ctx )
+{
+	XrInstance tsoInstance = ctx->tsoInstance;
+	XrSession tsoSession = ctx->tsoSession;
 	XrResult result;
 
 	// create action set
@@ -470,113 +557,61 @@ int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSe
 	strcpy(asci.actionSetName, "gameplay");
 	strcpy(asci.localizedActionSetName, "Gameplay");
 	asci.priority = 0;
-	result = xrCreateActionSet(tsoInstance, &asci, tsoActionSet);
-	if (!tsoCheck(tsoInstance, result, "xrCreateActionSet XR_TYPE_ACTION_SET_CREATE_INFO"))
+	result = xrCreateActionSet(tsoInstance, &asci, &ctx->tsoActionSet);
+	if (tsoCheck(ctx, result, "xrCreateActionSet XR_TYPE_ACTION_SET_CREATE_INFO"))
 	{
-		return 0;
+		return result;
 	}
 
-	XrPath handPath[2] = { XR_NULL_PATH, XR_NULL_PATH };
-	xrStringToPath(tsoInstance, "/user/hand/left", &handPath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right", &handPath[1]);
-	if (!tsoCheck(tsoInstance, result, "xrStringToPath"))
+	XrActionSet tsoActionSet = ctx->tsoActionSet;
+
+	xrStringToPath(tsoInstance, "/user/hand/left", &ctx->handPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right", &ctx->handPath[1]);
+	if (tsoCheck(ctx, result, "xrStringToPath"))
 	{
-		return 0;
+		return result;
 	}
 
-	XrAction grabAction = XR_NULL_HANDLE;
-	XrActionCreateInfo aci;
-	aci.type = XR_TYPE_ACTION_CREATE_INFO;
-	aci.next = NULL;
-	aci.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
-	strcpy(aci.actionName, "grab_object");
-	strcpy(aci.localizedActionName, "Grab Object");
-	aci.countSubactionPaths = 2;
-	aci.subactionPaths = handPath;
-	result = xrCreateAction(*tsoActionSet, &aci, &grabAction);
-	if (!tsoCheck(tsoInstance, result, "xrCreateAction XR_TYPE_ACTION_CREATE_INFO 1"))
-	{
-		return 0;
-	}
+	tsoInitAction( ctx, XR_ACTION_TYPE_FLOAT_INPUT, "grab_object", "Grab Object", &ctx->grabAction );
+	tsoInitAction( ctx, XR_ACTION_TYPE_FLOAT_INPUT, "trigger_action", "Trigger Action", &ctx->triggerAction );
+	tsoInitAction( ctx, XR_ACTION_TYPE_POSE_INPUT, "hand_pose", "Hand Pose", &ctx->poseAction );
+	tsoInitAction( ctx, XR_ACTION_TYPE_VIBRATION_OUTPUT, "vibrate_hand", "Vibrate Hand", &ctx->vibrateAction );
+	tsoInitAction( ctx, XR_ACTION_TYPE_BOOLEAN_INPUT, "quit_session", "Menu Button", &ctx->menuAction );
 
-	XrAction poseAction = XR_NULL_HANDLE;
-	aci.type = XR_TYPE_ACTION_CREATE_INFO;
-	aci.next = NULL;
-	aci.actionType = XR_ACTION_TYPE_POSE_INPUT;
-	strcpy(aci.actionName, "hand_pose");
-	strcpy(aci.localizedActionName, "Hand Pose");
-	aci.countSubactionPaths = 2;
-	aci.subactionPaths = handPath;
-	result = xrCreateAction(*tsoActionSet, &aci, &poseAction);
-	if (!tsoCheck(tsoInstance, result, "xrCreateAction XR_TYPE_ACTION_CREATE_INFO 2"))
+	xrStringToPath(tsoInstance, "/user/hand/left/input/select/click", &ctx->selectPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/select/click", &ctx->selectPath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/squeeze/value",  &ctx->squeezeValuePath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/squeeze/value", &ctx->squeezeValuePath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/squeeze/click",  &ctx->squeezeClickPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/squeeze/click", &ctx->squeezeClickPath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/trigger/value",  &ctx->triggerValuePath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/trigger/value", &ctx->triggerValuePath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/trigger/click",  &ctx->triggerClickPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/trigger/click", &ctx->triggerClickPath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/grip/pose", &ctx->posePath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/grip/pose", &ctx->posePath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/output/haptic", &ctx->hapticPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/output/haptic", &ctx->hapticPath[1]);
+	xrStringToPath(tsoInstance, "/user/hand/left/input/menu/click", &ctx->menuClickPath[0]);
+	xrStringToPath(tsoInstance, "/user/hand/right/input/menu/click", &ctx->menuClickPath[1]);
+	if (tsoCheck(ctx, result, "xrStringToPath"))
 	{
-		return 0;
-	}
-
-	XrAction vibrateAction = XR_NULL_HANDLE;
-	aci.type = XR_TYPE_ACTION_CREATE_INFO;
-	aci.next = NULL;
-	aci.actionType = XR_ACTION_TYPE_VIBRATION_OUTPUT;
-	strcpy(aci.actionName, "vibrate_hand");
-	strcpy(aci.localizedActionName, "Vibrate Hand");
-	aci.countSubactionPaths = 2;
-	aci.subactionPaths = handPath;
-	result = xrCreateAction(*tsoActionSet, &aci, &vibrateAction);
-	if (!tsoCheck(tsoInstance, result, "xrCreateAction XR_TYPE_ACTION_CREATE_INFO 3"))
-	{
-		return 0;
-	}
-
-	XrAction quitAction = XR_NULL_HANDLE;
-	aci.type = XR_TYPE_ACTION_CREATE_INFO;
-	aci.next = NULL;
-	aci.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
-	strcpy(aci.actionName, "quit_session");
-	strcpy(aci.localizedActionName, "Quit Session");
-	aci.countSubactionPaths = 2;
-	aci.subactionPaths = handPath;
-	result = xrCreateAction(*tsoActionSet, &aci, &quitAction);
-	if (!tsoCheck(tsoInstance, result, "xrCreateAction XR_TYPE_ACTION_CREATE_INFO 4"))
-	{
-		return 0;
-	}
-
-	XrPath selectPath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	XrPath squeezeValuePath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	XrPath squeezeClickPath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	XrPath posePath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	XrPath hapticPath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	XrPath menuClickPath[2] = {XR_NULL_PATH, XR_NULL_PATH};
-	xrStringToPath(tsoInstance, "/user/hand/left/input/select/click", &selectPath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/input/select/click", &selectPath[1]);
-	xrStringToPath(tsoInstance, "/user/hand/left/input/squeeze/value", &squeezeValuePath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/input/squeeze/value", &squeezeValuePath[1]);
-	xrStringToPath(tsoInstance, "/user/hand/left/input/squeeze/click", &squeezeClickPath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/input/squeeze/click", &squeezeClickPath[1]);
-	xrStringToPath(tsoInstance, "/user/hand/left/input/grip/pose", &posePath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/input/grip/pose", &posePath[1]);
-	xrStringToPath(tsoInstance, "/user/hand/left/output/haptic", &hapticPath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/output/haptic", &hapticPath[1]);
-	xrStringToPath(tsoInstance, "/user/hand/left/input/menu/click", &menuClickPath[0]);
-	xrStringToPath(tsoInstance, "/user/hand/right/input/menu/click", &menuClickPath[1]);
-	if (!tsoCheck(tsoInstance, result, "xrStringToPath"))
-	{
-		return 0;
+		return result;
 	}
 
 	// KHR Simple
-	{
+	if( 0 ){
 		XrPath interactionProfilePath = XR_NULL_PATH;
 		xrStringToPath(tsoInstance, "/interaction_profiles/khr/simple_controller", &interactionProfilePath);
-		XrActionSuggestedBinding bindings[8] = {
-			{grabAction, selectPath[0]},
-			{grabAction, selectPath[1]},
-			{poseAction, posePath[0]},
-			{poseAction, posePath[1]},
-			{quitAction, menuClickPath[0]},
-			{quitAction, menuClickPath[1]},
-			{vibrateAction, hapticPath[0]},
-			{vibrateAction, hapticPath[1]}
+		XrActionSuggestedBinding bindings[] = {
+			{ctx->grabAction, ctx->selectPath[0]},
+			{ctx->grabAction, ctx->selectPath[1]},
+			{ctx->poseAction, ctx->posePath[0]},
+			{ctx->poseAction, ctx->posePath[1]},
+			{ctx->menuAction, ctx->menuClickPath[0]},
+			{ctx->menuAction, ctx->menuClickPath[1]},
+			{ctx->vibrateAction, ctx->hapticPath[0]},
+			{ctx->vibrateAction, ctx->hapticPath[1]}
 		};
 
 		XrInteractionProfileSuggestedBinding suggestedBindings;
@@ -586,59 +621,91 @@ int tsoDefaultCreateActions(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSe
 		suggestedBindings.suggestedBindings = bindings;
 		suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
 		result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
-		if (!tsoCheck(tsoInstance, result, "xrSuggestInteractionProfileBindings"))
+		if (tsoCheck(ctx, result, "xrSuggestInteractionProfileBindings"))
 		{
-			return 0;
+			return result;
 		}
 	}
 
+    // oculus touch (Auto-remaps to to Index)
+    {
+        XrPath interactionProfilePath = XR_NULL_PATH;
+        xrStringToPath(tsoInstance, "/interaction_profiles/oculus/touch_controller", &interactionProfilePath);
+        XrActionSuggestedBinding bindings[] = {
+            {ctx->grabAction, ctx->squeezeValuePath[0]},
+            {ctx->grabAction, ctx->squeezeValuePath[1]},
+            {ctx->triggerAction, ctx->triggerValuePath[0]},
+            {ctx->triggerAction, ctx->triggerValuePath[1]},
+            {ctx->poseAction, ctx->posePath[0]},
+            {ctx->poseAction, ctx->posePath[1]},
+            {ctx->menuAction, ctx->menuClickPath[0]},
+            //{menuAction, menuClickPath[1]},  // no menu button on right controller?
+            {ctx->vibrateAction, ctx->hapticPath[0]},
+            {ctx->vibrateAction, ctx->hapticPath[1]}
+        };
+
+        XrInteractionProfileSuggestedBinding suggestedBindings;
+        suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+        suggestedBindings.next = NULL;
+        suggestedBindings.interactionProfile = interactionProfilePath;
+        suggestedBindings.suggestedBindings = bindings;
+        suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
+        result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
+        if (tsoCheck(ctx, result, "xrSuggestInteractionProfileBindings (oculus)"))
+        {
+            return result;
+        }
+    }
+	
 	XrActionSpaceCreateInfo aspci = { 0 };
 	aspci.type = XR_TYPE_ACTION_SPACE_CREATE_INFO;
 	aspci.next = NULL;
-	aspci.action = poseAction;
+	aspci.action = ctx->poseAction;
 	XrPosef identity = { {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f} };
 	aspci.poseInActionSpace = identity;
 
-	aspci.subactionPath = handPath[0];
-	result = xrCreateActionSpace(tsoSession, &aspci, &tsoHandSpace[0]);
-	if (!tsoCheck(tsoInstance, result, "xrCreateActionSpace"))
+	aspci.subactionPath = ctx->handPath[0];
+	result = xrCreateActionSpace(ctx->tsoSession, &aspci, &ctx->tsoHandSpace[0]);
+	if (tsoCheck(ctx, result, "xrCreateActionSpace"))
 	{
-		return 0;
+		return result;
 	}
 
-	aspci.subactionPath = handPath[1];
-	result = xrCreateActionSpace(tsoSession, &aspci, &tsoHandSpace[1]);
-	if (!tsoCheck(tsoInstance, result, "xrCreateActionSpace"))
+	aspci.subactionPath = ctx->handPath[1];
+	result = xrCreateActionSpace(ctx->tsoSession, &aspci, &ctx->tsoHandSpace[1]);
+	if (tsoCheck(ctx, result, "xrCreateActionSpace"))
 	{
-		return 0;
+		return result;
 	}
 
 	XrSessionActionSetsAttachInfo sasai;
 	sasai.type = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO;
 	sasai.next = NULL;
 	sasai.countActionSets = 1;
-	sasai.actionSets = tsoActionSet;
+	sasai.actionSets = &ctx->tsoActionSet;
 	result = xrAttachSessionActionSets(tsoSession, &sasai);
-	if (!tsoCheck(tsoInstance, result, "xrSessionActionSetsAttachInfo"))
+	if (tsoCheck(ctx, result, "xrSessionActionSetsAttachInfo"))
 	{
-		return 0;
+		return result;
 	}
 
-	return 1;
+	return 0;
 }
 
 
-int tsoCreateStageSpace(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession, XrSpace * tsoStageSpace)
+int tsoCreateStageSpace( tsoContext * ctx )
 {
+	XrSession tsoSession = ctx->tsoSession;
 	XrResult result;
+	
 #if TSOPENXR_ENABLE_DEBUG
-	if (tsoPrintAll)
+	if (ctx->tsoPrintAll)
 	{
 		uint32_t referenceSpacesCount;
 		result = xrEnumerateReferenceSpaces(tsoSession, 0, &referenceSpacesCount, NULL);
-		if (!tsoCheck(tsoInstance, result, "xrEnumerateReferenceSpaces"))
+		if (tsoCheck(ctx, result, "xrEnumerateReferenceSpaces"))
 		{
-			return 0;
+			return result;
 		}
 
 		XrReferenceSpaceType * referenceSpaces = malloc( referenceSpacesCount * sizeof(XrReferenceSpaceType) );
@@ -646,9 +713,9 @@ int tsoCreateStageSpace(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSessio
 		for( i = 0; i < referenceSpacesCount; i++ )
 			referenceSpaces[i] = XR_REFERENCE_SPACE_TYPE_VIEW;
 		result = xrEnumerateReferenceSpaces(tsoSession, referenceSpacesCount, &referenceSpacesCount, referenceSpaces );
-		if (!tsoCheck(tsoInstance, result, "xrEnumerateReferenceSpaces"))
+		if (tsoCheck(ctx, result, "xrEnumerateReferenceSpaces"))
 		{
-			return 0;
+			return result;
 		}
 
 		TSOPENXR_INFO("referenceSpaces:\n");
@@ -679,36 +746,40 @@ int tsoCreateStageSpace(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSessio
 	rsci.next = NULL;
 	rsci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
 	rsci.poseInReferenceSpace = identityPose;
-	result = xrCreateReferenceSpace(tsoSession, &rsci, tsoStageSpace);
-	if (!tsoCheck(tsoInstance, result, "xrCreateReferenceSpace"))
+	result = xrCreateReferenceSpace(tsoSession, &rsci, &ctx->tsoStageSpace);
+	if (tsoCheck(ctx, result, "xrCreateReferenceSpace"))
 	{
-		return 0;
+		return result;
 	}
 
-	return 1;
+	return 0;
 }
 
 
-int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
-					  XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-					  tsoSwapchainInfo ** tsoSwapchains, // Will allocate to tsoViewConfigsCount
-					  XrSwapchainImageOpenGLKHR *** tsoSwapchainImages,
-					  uint32_t ** tsoSwapchainLengths) // Actually array of pointers to pointers
+
+int tsoCreateSwapchains( tsoContext * ctx )
 {
+	XrSession tsoSession = ctx->tsoSession;
+	XrViewConfigurationView * tsoViewConfigs = ctx->tsoViewConfigs;
+	int tsoNumViewConfigs = ctx->tsoNumViewConfigs;
+	tsoSwapchainInfo ** tsoSwapchains = &ctx->tsoSwapchains; // Will allocate to tsoNumViewConfigs
+	XrSwapchainImageOpenGLKHR *** tsoSwapchainImages = &ctx->tsoSwapchainImages;
+	uint32_t ** tsoSwapchainLengths = &ctx->tsoSwapchainLengths; // Actually array of pointers to pointers
+					  
 	int i;
 	XrResult result;
 	uint32_t swapchainFormatCount;
 	result = xrEnumerateSwapchainFormats(tsoSession, 0, &swapchainFormatCount, NULL);
-	if (!tsoCheck(tsoInstance, result, "xrEnumerateSwapchainFormats"))
+	if (tsoCheck(ctx, result, "xrEnumerateSwapchainFormats"))
 	{
-		return 0;
+		return result;
 	}
 
 	int64_t swapchainFormats[swapchainFormatCount];
 	result = xrEnumerateSwapchainFormats(tsoSession, swapchainFormatCount, &swapchainFormatCount, swapchainFormats);
-	if (!tsoCheck(tsoInstance, result, "xrEnumerateSwapchainFormats"))
+	if (tsoCheck(ctx, result, "xrEnumerateSwapchainFormats"))
 	{
-		return 0;
+		return result;
 	}
 	
 	int selfmt = 0;
@@ -730,7 +801,7 @@ int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
 	}
 	
 #if TSOPENXR_ENABLE_DEBUG
-	if( tsoPrintAll )
+	if( ctx->tsoPrintAll )
 	{
 		TSOPENXR_INFO( "Formats:" );
 		for( i = 0; i < swapchainFormatCount; i++ )
@@ -743,9 +814,9 @@ int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
 	// For now we just pick the default one.
 	int64_t swapchainFormatToUse = swapchainFormats[selfmt];
 
-	*tsoSwapchains = realloc( *tsoSwapchains, tsoViewConfigsCount * sizeof( tsoSwapchainInfo ) );
-	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, tsoViewConfigsCount * sizeof( uint32_t ) );
-	for (uint32_t i = 0; i < tsoViewConfigsCount; i++)
+	*tsoSwapchains = realloc( *tsoSwapchains, tsoNumViewConfigs * sizeof( tsoSwapchainInfo ) );
+	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, tsoNumViewConfigs * sizeof( uint32_t ) );
+	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
 	{
 		XrSwapchainCreateInfo sci;
 		sci.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
@@ -762,9 +833,9 @@ int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
 
 		XrSwapchain swapchainHandle;
 		result = xrCreateSwapchain(tsoSession, &sci, &swapchainHandle);
-		if (!tsoCheck(tsoInstance, result, "xrCreateSwapchain"))
+		if (tsoCheck(ctx, result, "xrCreateSwapchain"))
 		{
-			return 0;
+			return result;
 		}
 
 		(*tsoSwapchains)[i].handle = swapchainHandle;
@@ -772,14 +843,14 @@ int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
 		(*tsoSwapchains)[i].height = sci.height;
 
 		result = xrEnumerateSwapchainImages((*tsoSwapchains)[i].handle, 0, &(*tsoSwapchainLengths)[i], NULL);
-		if (!tsoCheck(tsoInstance, result, "xrEnumerateSwapchainImages"))
+		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages"))
 		{
-			return 0;
+			return result;
 		}
 	}
 
-	*tsoSwapchainImages = realloc( *tsoSwapchainImages, tsoViewConfigsCount * sizeof( XrSwapchainImageOpenGLKHR * ) ); 
-	for (uint32_t i = 0; i < tsoViewConfigsCount; i++)
+	*tsoSwapchainImages = realloc( *tsoSwapchainImages, tsoNumViewConfigs * sizeof( XrSwapchainImageOpenGLKHR * ) ); 
+	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
 	{
 		(*tsoSwapchainImages)[i] = malloc( (*tsoSwapchainLengths)[i] * sizeof(XrSwapchainImageOpenGLKHR) );
 		for (uint32_t j = 0; j < (*tsoSwapchainLengths)[i]; j++)
@@ -791,17 +862,17 @@ int tsoCreateSwapchains(XrInstance tsoInstance, XrSession tsoSession,
 		result = xrEnumerateSwapchainImages((*tsoSwapchains)[i].handle, (*tsoSwapchainLengths)[i], &(*tsoSwapchainLengths)[i],
 											(XrSwapchainImageBaseHeader*)((*tsoSwapchainImages)[i]));
 
-		if (!tsoCheck(tsoInstance, result, "xrEnumerateSwapchainImages"))
+		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages"))
 		{
-			return 0;
+			return result;
 		}
 	}
 	
-	return 1;
+	return 0;
 }
 
 
-int tsoBeginSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession tsoSession)
+int tsoBeginSession( tsoContext * ctx )
 {
 	XrResult result;
 	XrViewConfigurationType stereoViewConfigType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
@@ -810,18 +881,20 @@ int tsoBeginSession(XrInstance tsoInstance, XrSystemId tsoSystemId, XrSession ts
 	sbi.next = NULL;
 	sbi.primaryViewConfigurationType = stereoViewConfigType;
 
-	result = xrBeginSession(tsoSession, &sbi);
-	if (!tsoCheck(tsoInstance, result, "xrBeginSession"))
+	result = xrBeginSession(ctx->tsoSession, &sbi);
+	if (tsoCheck(ctx, result, "xrBeginSession"))
 	{
-		return 0;
+		return result;
 	}
 
-	return 1;
+	return 0;
 }
 
 
-int tsoSyncInput(XrInstance tsoInstance, XrSession tsoSession, XrActionSet tsoActionSet)
+int tsoSyncInput( tsoContext * ctx )
 {
+	XrSession tsoSession = ctx->tsoSession;
+	XrActionSet tsoActionSet = ctx->tsoActionSet;
 	XrResult result;
 
 	// syncInput
@@ -834,21 +907,24 @@ int tsoSyncInput(XrInstance tsoInstance, XrSession tsoSession, XrActionSet tsoAc
 	asi.countActiveActionSets = 1;
 	asi.activeActionSets = &aas;
 	result = xrSyncActions(tsoSession, &asi);
-	if (!tsoCheck(tsoInstance, result, "xrSyncActions"))
+	if (tsoCheck(ctx, result, "xrSyncActions"))
 	{
-		return 0;
+		return result;
 	}
 
 	// Todo's from original author.
 	// AJT: TODO: xrGetActionStateFloat()
 	// AJT: TODO: xrGetActionStatePose()
 
-	return 1;
+	return 0;
 }
 
-int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigurationView * tsoViewConfigs, int tsoViewConfigsCount,
-				 XrSpace tsoStageSpace, tsoRenderLayer_t RenderLayer, void * opaque )
+int tsoRenderFrame( tsoContext * ctx )
 {
+	XrSession tsoSession = ctx->tsoSession;
+	int tsoNumViewConfigs = ctx->tsoNumViewConfigs;
+	XrSpace tsoStageSpace = ctx->tsoStageSpace;
+
 	XrFrameState fs;
 	fs.type = XR_TYPE_FRAME_STATE;
 	fs.next = NULL;
@@ -858,18 +934,18 @@ int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigura
 	fwi.next = NULL;
 
 	XrResult result = xrWaitFrame(tsoSession, &fwi, &fs);
-	if (!tsoCheck(tsoInstance, result, "xrWaitFrame"))
+	if (tsoCheck(ctx, result, "xrWaitFrame"))
 	{
-		return 0;
+		return result;
 	}
 
 	XrFrameBeginInfo fbi;
 	fbi.type = XR_TYPE_FRAME_BEGIN_INFO;
 	fbi.next = NULL;
 	result = xrBeginFrame(tsoSession, &fbi);
-	if (!tsoCheck(tsoInstance, result, "xrBeginFrame"))
+	if (tsoCheck(ctx, result, "xrBeginFrame"))
 	{
-		return 0;
+		return result;
 	}
 
 	int layerCount = 0;
@@ -880,9 +956,8 @@ int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigura
 	layer.next = NULL;
 	layer.space = tsoStageSpace;
 
-
-	XrView views[tsoViewConfigsCount];
-	for (size_t i = 0; i < tsoViewConfigsCount; i++)
+	XrView views[tsoNumViewConfigs];
+	for (size_t i = 0; i < tsoNumViewConfigs; i++)
 	{
 		views[i].type = XR_TYPE_VIEW;
 		views[i].next = NULL;
@@ -896,25 +971,46 @@ int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigura
 	XrViewLocateInfo vli;
 	vli.type = XR_TYPE_VIEW_LOCATE_INFO;
 	vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	tsoPredictedDisplayTime = vli.displayTime = fs.predictedDisplayTime;
+	ctx->tsoPredictedDisplayTime = vli.displayTime = fs.predictedDisplayTime;
 	vli.space = tsoStageSpace;
-	result = xrLocateViews( tsoSession, &vli, &viewState, tsoViewConfigsCount, &viewCountOutput, views );
-	if (!tsoCheck(tsoInstance, result, "xrLocateViews"))
+	result = xrLocateViews( tsoSession, &vli, &viewState, tsoNumViewConfigs, &viewCountOutput, views );
+	if (tsoCheck(ctx, result, "xrLocateViews"))
 	{
-		return 0;
+		return result;
 	}
 
 	XrCompositionLayerProjectionView projectionLayerViews[viewCountOutput];
+	memset( projectionLayerViews, 0, sizeof( XrCompositionLayerProjectionView ) * viewCountOutput );
 
+	int i;
+	for( i = 0; i < viewCountOutput; i++ )
+	{
+		// Each view has a separate swapchain which is acquired, rendered to, and released.
+		const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains + i;
+
+		XrCompositionLayerProjectionView * layerView = projectionLayerViews + i;
+		layerView->type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+		layerView->pose = views[i].pose;
+		layerView->fov = views[i].fov;
+		layerView->subImage.swapchain = viewSwapchain->handle;
+		layerView->subImage.imageRect.offset.x = 0;
+		layerView->subImage.imageRect.offset.y = 0;
+		layerView->subImage.imageRect.extent.width = viewSwapchain->width;
+		layerView->subImage.imageRect.extent.height = viewSwapchain->height;
+		layerView->subImage.imageArrayIndex = 0;
+	}
+		
 	// We only support up to 1 layer.
 	if (fs.shouldRender == XR_TRUE && XR_UNQUALIFIED_SUCCESS(result))
 	{
-		if (RenderLayer(tsoInstance, tsoSession, tsoViewConfigs, tsoViewConfigsCount,
-						tsoStageSpace, fs.predictedDisplayTime, &layer, projectionLayerViews, views, viewCountOutput, opaque))
+		if (ctx->tsoRenderLayer(ctx, fs.predictedDisplayTime, projectionLayerViews, viewCountOutput) == 0)
 		{
+			layer.viewCount = viewCountOutput;
+			layer.views = projectionLayerViews;
 			layerCount = 1;
 		}
 	}
+
 
 	XrFrameEndInfo fei = { 0 };
 	fei.type = XR_TYPE_FRAME_END_INFO;
@@ -924,23 +1020,23 @@ int tsoRenderFrame(XrInstance tsoInstance, XrSession tsoSession, XrViewConfigura
 	fei.layers = layers;
 
 	result = xrEndFrame(tsoSession, &fei);
-	if (!tsoCheck(tsoInstance, result, "xrEndFrame"))
+	if (tsoCheck(ctx, result, "xrEndFrame"))
 	{
-		return 0;
+		return result;
 	}
 
-	return 1;
+	return 0;
 }
 
 
 
-int tsoHandleLoop( XrInstance tsoInstance )
+int tsoHandleLoop( tsoContext * ctx )
 {
 	XrEventDataBuffer xrEvent;
 	xrEvent.type = XR_TYPE_EVENT_DATA_BUFFER;
 	xrEvent.next = NULL;
 
-	XrResult result = xrPollEvent(tsoInstance, &xrEvent);
+	XrResult result = xrPollEvent(ctx->tsoInstance, &xrEvent);
 
 	if (result == XR_SUCCESS)
 	{
@@ -957,8 +1053,8 @@ int tsoHandleLoop( XrInstance tsoInstance )
 			// Receiving the XrEventDataSessionStateChanged event structure indicates that the application has changed lifecycle stat.e
 			TSOPENXR_INFO("xrEvent: XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED -> ");
 			XrEventDataSessionStateChanged* ssc = (XrEventDataSessionStateChanged*)&xrEvent;
-			tsoXRState = ssc->state;
-			switch (tsoXRState)
+			ctx->tsoXRState = ssc->state;
+			switch (ctx->tsoXRState)
 			{
 			case XR_SESSION_STATE_IDLE:
 				// The initial state after calling xrCreateSession or returned to after calling xrEndSession.
@@ -967,11 +1063,11 @@ int tsoHandleLoop( XrInstance tsoInstance )
 			case XR_SESSION_STATE_READY:
 				// The application is ready to call xrBeginSession and sync its frame loop with the runtime.
 				TSOPENXR_INFO("XR_SESSION_STATE_READY\n");
-				if (!tsoBeginSession(tsoInstance, tsoSystemId, tsoSession))
+				if( ( result = tsoBeginSession( ctx ) ) )
 				{
-					return 0;
+					return result;
 				}
-				tsoSessionReady = 1;
+				ctx->tsoSessionReady = 1;
 				break;
 			case XR_SESSION_STATE_SYNCHRONIZED:
 				// The application has synced its frame loop with the runtime but is not visible to the user.
@@ -998,7 +1094,7 @@ int tsoHandleLoop( XrInstance tsoInstance )
 				// The application should end its XR experience and not automatically restart it.
 				break;
 			default:
-				TSOPENXR_INFO("XR_SESSION_STATE_??? %d\n", (int)tsoXRState);
+				TSOPENXR_INFO("XR_SESSION_STATE_??? %d\n", (int)ctx->tsoXRState);
 				break;
 			}
 			break;
@@ -1020,7 +1116,75 @@ int tsoHandleLoop( XrInstance tsoInstance )
 			break;
 		}
 	}
-	return 1;
+	return 0;
+}
+
+int tsoAcquireSwapchain( tsoContext * ctx, int swapchainNumber, uint32_t * swapchainImageIndex )
+{
+	const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains + swapchainNumber;
+
+	XrSwapchainImageAcquireInfo ai = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
+	XrResult result = xrAcquireSwapchainImage(viewSwapchain->handle, &ai, swapchainImageIndex);
+	if (tsoCheck(ctx, result, "xrAquireSwapchainImage"))
+	{
+		return result;
+	}
+
+	XrSwapchainImageWaitInfo wi = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+	wi.timeout = XR_INFINITE_DURATION;
+	result = xrWaitSwapchainImage(viewSwapchain->handle, &wi);
+	if (tsoCheck(ctx, result, "xrWaitSwapchainImage"))
+	{
+		return result;
+	}
+	
+	return 0;
+}
+
+int tsoReleaseSwapchain( tsoContext * ctx, int swapchainNumber )
+{
+	const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains + swapchainNumber;
+
+	XrResult result;
+	XrSwapchainImageReleaseInfo ri = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+	result = xrReleaseSwapchainImage( viewSwapchain->handle, &ri );
+	if (tsoCheck(ctx, result, "xrReleaseSwapchainImage"))
+	{
+		return result;
+	}
+	return 0;
+}
+
+int tsoTeardown( tsoContext * ctx )
+{
+	XrResult result;
+	int ret = 0;
+	int i;
+	for( i = 0; i < ctx->tsoNumViewConfigs; i++ )
+	{
+		result = xrDestroySwapchain( ctx->tsoSwapchains[i].handle);
+		tsoCheck(ctx, result, "xrDestroySwapchain");
+	}
+
+	result = xrDestroySpace(ctx->tsoStageSpace);
+	tsoCheck(ctx, result, "xrDestroySpace");
+	ret |= result;
+
+	result = xrEndSession(ctx->tsoSession);
+	tsoCheck(ctx, result, "xrEndSession");
+	ret |= result;
+
+	result = xrDestroySession(ctx->tsoSession);
+	tsoCheck(ctx, result, "xrDestroySession");
+	ret |= result;
+
+	result = xrDestroyInstance(ctx->tsoInstance);
+	ctx->tsoInstance = 0;
+	tsoCheck(ctx, result, "xrDestroyInstance");
+	ret |= result;
+	
+	memset( ctx, 0, sizeof( *ctx ) );
+	return ret;
 }
 
 void tsoUtilInitPoseMat(float* result, const XrPosef * pose)
@@ -1061,9 +1225,54 @@ void tsoUtilInitPoseMat(float* result, const XrPosef * pose)
     result[15] = 1.0;
 }
 
-void tsoUtilInitProjectionMat(float* result, enum GraphicsAPI graphicsApi, const float tanAngleLeft,
-							  const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
-							  const float nearZ, const float farZ)
+void tsoMultiplyMat(float* result, const float* a, const float* b)
+{
+    result[0] = a[0] * b[0] + a[4] * b[1] + a[8] * b[2] + a[12] * b[3];
+    result[1] = a[1] * b[0] + a[5] * b[1] + a[9] * b[2] + a[13] * b[3];
+    result[2] = a[2] * b[0] + a[6] * b[1] + a[10] * b[2] + a[14] * b[3];
+    result[3] = a[3] * b[0] + a[7] * b[1] + a[11] * b[2] + a[15] * b[3];
+
+    result[4] = a[0] * b[4] + a[4] * b[5] + a[8] * b[6] + a[12] * b[7];
+    result[5] = a[1] * b[4] + a[5] * b[5] + a[9] * b[6] + a[13] * b[7];
+    result[6] = a[2] * b[4] + a[6] * b[5] + a[10] * b[6] + a[14] * b[7];
+    result[7] = a[3] * b[4] + a[7] * b[5] + a[11] * b[6] + a[15] * b[7];
+
+    result[8] = a[0] * b[8] + a[4] * b[9] + a[8] * b[10] + a[12] * b[11];
+    result[9] = a[1] * b[8] + a[5] * b[9] + a[9] * b[10] + a[13] * b[11];
+    result[10] = a[2] * b[8] + a[6] * b[9] + a[10] * b[10] + a[14] * b[11];
+    result[11] = a[3] * b[8] + a[7] * b[9] + a[11] * b[10] + a[15] * b[11];
+
+    result[12] = a[0] * b[12] + a[4] * b[13] + a[8] * b[14] + a[12] * b[15];
+    result[13] = a[1] * b[12] + a[5] * b[13] + a[9] * b[14] + a[13] * b[15];
+    result[14] = a[2] * b[12] + a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
+    result[15] = a[3] * b[12] + a[7] * b[13] + a[11] * b[14] + a[15] * b[15];
+}
+
+void tsoInvertOrthogonalMat(float* result, float* src)
+{
+    result[0] = src[0];
+    result[1] = src[4];
+    result[2] = src[8];
+    result[3] = 0.0f;
+    result[4] = src[1];
+    result[5] = src[5];
+    result[6] = src[9];
+    result[7] = 0.0f;
+    result[8] = src[2];
+    result[9] = src[6];
+    result[10] = src[10];
+    result[11] = 0.0f;
+    result[12] = -(src[0] * src[12] + src[1] * src[13] + src[2] * src[14]);
+    result[13] = -(src[4] * src[12] + src[5] * src[13] + src[6] * src[14]);
+    result[14] = -(src[8] * src[12] + src[9] * src[13] + src[10] * src[14]);
+    result[15] = 1.0f;
+}
+
+
+void tsoUtilInitProjectionMat(const XrPosef * pose, float* projMat, float * invViewMat, float * viewMat, float * modelViewProjMat,
+								enum GraphicsAPI graphicsApi, const float tanAngleLeft,
+								const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
+								const float nearZ, const float farZ)
 {
 	const float tanAngleWidth = tanAngleRight - tanAngleLeft;
 
@@ -1078,49 +1287,55 @@ void tsoUtilInitProjectionMat(float* result, enum GraphicsAPI graphicsApi, const
 	if (farZ <= nearZ)
 	{
 		// place the far plane at infinity
-		result[0] = 2 / tanAngleWidth;
-		result[4] = 0;
-		result[8] = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
-		result[12] = 0;
+		projMat[0] = 2 / tanAngleWidth;
+		projMat[4] = 0;
+		projMat[8] = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+		projMat[12] = 0;
 
-		result[1] = 0;
-		result[5] = 2 / tanAngleHeight;
-		result[9] = (tanAngleUp + tanAngleDown) / tanAngleHeight;
-		result[13] = 0;
+		projMat[1] = 0;
+		projMat[5] = 2 / tanAngleHeight;
+		projMat[9] = (tanAngleUp + tanAngleDown) / tanAngleHeight;
+		projMat[13] = 0;
 
-		result[2] = 0;
-		result[6] = 0;
-		result[10] = -1;
-		result[14] = -(nearZ + offsetZ);
+		projMat[2] = 0;
+		projMat[6] = 0;
+		projMat[10] = -1;
+		projMat[14] = -(nearZ + offsetZ);
 
-		result[3] = 0;
-		result[7] = 0;
-		result[11] = -1;
-		result[15] = 0;
+		projMat[3] = 0;
+		projMat[7] = 0;
+		projMat[11] = -1;
+		projMat[15] = 0;
 	}
 	else
 	{
 		// normal projection
-		result[0] = 2 / tanAngleWidth;
-		result[4] = 0;
-		result[8] = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
-		result[12] = 0;
+		projMat[0] = 2 / tanAngleWidth;
+		projMat[4] = 0;
+		projMat[8] = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+		projMat[12] = 0;
 
-		result[1] = 0;
-		result[5] = 2 / tanAngleHeight;
-		result[9] = (tanAngleUp + tanAngleDown) / tanAngleHeight;
-		result[13] = 0;
+		projMat[1] = 0;
+		projMat[5] = 2 / tanAngleHeight;
+		projMat[9] = (tanAngleUp + tanAngleDown) / tanAngleHeight;
+		projMat[13] = 0;
 
-		result[2] = 0;
-		result[6] = 0;
-		result[10] = -(farZ + offsetZ) / (farZ - nearZ);
-		result[14] = -(farZ * (nearZ + offsetZ)) / (farZ - nearZ);
+		projMat[2] = 0;
+		projMat[6] = 0;
+		projMat[10] = -(farZ + offsetZ) / (farZ - nearZ);
+		projMat[14] = -(farZ * (nearZ + offsetZ)) / (farZ - nearZ);
 
-		result[3] = 0;
-		result[7] = 0;
-		result[11] = -1;
-		result[15] = 0;
+		projMat[3] = 0;
+		projMat[7] = 0;
+		projMat[11] = -1;
+		projMat[15] = 0;
 	}
+	
+	
+	// compute view matrix by inverting the pose
+	tsoUtilInitPoseMat(invViewMat, pose);
+	tsoInvertOrthogonalMat(viewMat, invViewMat);
+	tsoMultiplyMat(modelViewProjMat, projMat, viewMat);
 }
 
 #endif // TSOPENXR_IMPLEMENTATION
