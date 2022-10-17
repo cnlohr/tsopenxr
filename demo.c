@@ -35,6 +35,7 @@ XrCompositionLayerProjectionView saveLayerProjectionView;
 tsoContext TSO;
 
 #ifndef GL_FRAMEBUFFER
+#define GL_TEXTURE0 0x84C0
 #define GL_FRAMEBUFFER	 0x8D40
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_DEPTH_ATTACHMENT  0x8D00
@@ -50,6 +51,8 @@ void (*minXRglUniformMatrix4fv)( GLint location, GLsizei count, GLboolean transp
 void (*minXRglVertexAttribPointer)( GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
 BOOL (*minXRwglSwapIntervalEXT)(int interval);
 void (*minXRglBlitNamedFramebuffer)( GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
+void (*minXRglActiveTexture)( GLenum texture );
+void (*minXRglUniform1i)( GLint location, GLint v0 );
 
 void EnumOpenGLExtensions()
 {
@@ -60,6 +63,8 @@ void EnumOpenGLExtensions()
 	minXRglVertexAttribPointer = CNFGGetProcAddress( "glVertexAttribPointer" );	
 	minXRwglSwapIntervalEXT = CNFGGetProcAddress( "wglSwapIntervalEXT" );
 	minXRglBlitNamedFramebuffer = CNFGGetProcAddress( "glBlitNamedFramebuffer" );
+	minXRglActiveTexture = CNFGGetProcAddress( "glActiveTexture" );
+	minXRglUniform1i = CNFGGetProcAddress( "glUniform1i" );
 }
 
 
@@ -81,7 +86,7 @@ int SetupRendering()
 	if( drawProgram <= 0 )
 	{
 		TSOPENXR_ERROR( "Error: Cannot load shader\n" );
-		return 0;
+		return -1;
 	}
 	CNFGglUseProgram( drawProgram );
 	drawProgramModelViewUniform = CNFGglGetUniformLocation ( drawProgram , "modelViewProjMatrix" );
@@ -98,12 +103,12 @@ int SetupRendering()
 
 		"varying vec2 uv;"
 		"sampler2D texture;"
-		"void main() { gl_FragColor = vec4(uv, 1.0, 1.0); }" 
+		"void main() { gl_FragColor = vec4(texture2D(texture, uv).rgb, 1.0); }" 
 	);
 	if( textureProgram <= 0 )
 	{
 		TSOPENXR_ERROR( "Error: Cannot load shader\n" );
-		return 0;
+		return -1;
 	}
 	CNFGglUseProgram( textureProgram );
 	textureProgramModelViewUniform = CNFGglGetUniformLocation ( textureProgram , "modelViewProjMatrix" );
@@ -118,10 +123,17 @@ int SetupRendering()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	uint32_t colordata[] = { 0xff000000, 0xff0000ff, 0xff00ff00, 0xffff0000 };
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, colordata );
 	glBindTexture(GL_TEXTURE_2D, 0);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0 );
 
-	return glGetError() == 0;
+	int err = glGetError();
+	if( err )
+	{
+		TSOPENXR_ERROR( "OpenGL Error On Init %d\n", err );
+		return err;
+	}
+	return 0;
 }
 
 uint32_t CreateDepthTexture(uint32_t colorTexture)
@@ -191,58 +203,70 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		glClearDepth(1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-		// Render Pipeline copied from https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp
-
-		// convert XrFovf into an OpenGL projection matrix.
-		const float tanLeft = tan(layerView->fov.angleLeft);
-		const float tanRight = tan(layerView->fov.angleRight);
-		const float tanDown = tan(layerView->fov.angleDown);
-		const float tanUp = tan(layerView->fov.angleUp);
 		const float nearZ = 0.05f;
 		const float farZ = 100.0f;
 		float projMat[16];
 		float invViewMat[16];
 		float viewMat[16];
 		float modelViewProjMat[16];
-		tsoUtilInitProjectionMat(&layerView->pose, projMat, invViewMat, viewMat, modelViewProjMat, GRAPHICS_OPENGL, tanLeft, tanRight, tanUp, tanDown, nearZ, farZ);
+		tsoUtilInitProjectionMat( layerView, projMat, invViewMat, viewMat, modelViewProjMat, GRAPHICS_OPENGL, nearZ, farZ);
 
 		// Actually start rendering
+		glEnable( GL_BLEND );
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 		
 		CNFGglUseProgram( drawProgram );
 		minXRglUniformMatrix4fv( drawProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
 
-		static const float Vertices[] = { 
-			0, 0, 0, 1, 0, 0, 
-			0, 0, 0, 0, 1, 0, 
-			0, 0, 0, 0, 0, 1 };
-		static const uint32_t Colors[] = {
-			0xff0000ff, 0xff0000ff,
-			0xff00ff00, 0xff00ff00,
-			0xffff0000, 0xffff0000, 
+		{
+			static const float Vertices[] = { 
+				0, 0, 0, 1, 0, 0, 
+				0, 0, 0, 0, 1, 0, 
+				0, 0, 0, 0, 0, 1 };
+			static const uint32_t Colors[] = {
+				0xff0000ff, 0xff0000ff,
+				0xff00ff00, 0xff00ff00,
+				0xffff0000, 0xffff0000, 
+				};
+				
+			static const int GeometryIndices[] = {
+				0, 1, 2, 3, 4, 5,
 			};
-			
-		static const int GeometryIndices[] = {
-			0, 1, 2, 3, 4, 5,
-		};
 
-		CNFGglEnableVertexAttribArray(0);
-		CNFGglEnableVertexAttribArray(1);
-		minXRglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, Vertices);
-		minXRglVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, Colors);
+			CNFGglEnableVertexAttribArray(0);
+			CNFGglEnableVertexAttribArray(1);
+			minXRglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, Vertices);
+			minXRglVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, Colors);
 
-		glEnable( GL_BLEND );
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
-		glLineWidth( 2.0 );
+			glLineWidth( 2.0 );
 
-		glDrawElements( GL_LINES, 6, GL_UNSIGNED_INT, GeometryIndices );
-		
+			glDrawElements( GL_LINES, 6, GL_UNSIGNED_INT, GeometryIndices );
+		}
 		
 		
 		
 		CNFGglUseProgram( textureProgram );
 		minXRglUniformMatrix4fv( textureProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
-		
-		
+		{
+			minXRglUniform1i( textureProgramTextureUniform, 0 );
+			glBindTexture(GL_TEXTURE_2D, debugTexture);
+			static const float Vertices[] = { 
+				0, 0, 0,  0, 0, 1,  1, 0, 0,  1, 0, 1 };
+			static const float UVs[] = {
+				1, 0,  1, 1,  0, 0,  0, 1 };
+			static const int GeometryIndices[] = {
+				0, 1, 2, 2, 1, 3,
+			};
+
+			CNFGglEnableVertexAttribArray(0);
+			CNFGglEnableVertexAttribArray(1);
+			minXRglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, Vertices);
+			minXRglVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, UVs);
+
+			glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, GeometryIndices );
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
 		
 		minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -286,7 +310,7 @@ int main()
 
 	EnumOpenGLExtensions();
 
-	if( SetupRendering() == 0 ) return -1;
+	if( SetupRendering() ) return -1;
 	
 	if ( ( r = tsoDefaultCreateActions( &TSO ) ) ) return r;
 	
@@ -398,7 +422,9 @@ int main()
 		CNFGDrawText( debugBuffer, 2 );
 
 		glReadBuffer(GL_FRONT);
-		glCopyTexImage2D( debugTexture, 0, GL_RGBA, 0, 0, windowW, windowH, 0 );
+		glBindTexture(GL_TEXTURE_2D, debugTexture);
+		glCopyTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, windowW, windowH, 0 );
+		glBindTexture(GL_TEXTURE_2D, 0);
 
 		CNFGSwapBuffers();
 	}

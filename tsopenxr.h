@@ -135,9 +135,8 @@ int tsoTeardown( tsoContext * ctx );
 // Utility functions
 void tsoUtilInitPoseMat(float* result, const XrPosef * pose);
 enum GraphicsAPI { GRAPHICS_VULKAN, GRAPHICS_OPENGL, GRAPHICS_OPENGL_ES, GRAPHICS_D3D };
-void tsoUtilInitProjectionMat(const XrPosef * pose, float* projMat, float * invViewMat, float * viewMat, float * ModelViewProjMat,
-								enum GraphicsAPI graphicsApi, const float tanAngleLeft,
-								const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
+void tsoUtilInitProjectionMat(XrCompositionLayerProjectionView * layerView, float* projMat, float * invViewMat, float * viewMat, float * modelViewProjMat,
+								enum GraphicsAPI graphicsApi, 
 								const float nearZ, const float farZ);
 void tsoInvertOrthogonalMat(float* result, float* src);
 void tsoMultiplyMat(float* result, const float* a, const float* b);
@@ -1187,6 +1186,9 @@ int tsoTeardown( tsoContext * ctx )
 	return ret;
 }
 
+
+// Utility functions from copied from https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp
+
 void tsoUtilInitPoseMat(float* result, const XrPosef * pose)
 {
     const float x2  = pose->orientation.x + pose->orientation.x;
@@ -1268,12 +1270,16 @@ void tsoInvertOrthogonalMat(float* result, float* src)
     result[15] = 1.0f;
 }
 
-
-void tsoUtilInitProjectionMat(const XrPosef * pose, float* projMat, float * invViewMat, float * viewMat, float * modelViewProjMat,
-								enum GraphicsAPI graphicsApi, const float tanAngleLeft,
-								const float tanAngleRight, const float tanAngleUp, float const tanAngleDown,
+void tsoUtilInitProjectionMat(XrCompositionLayerProjectionView * layerView, float* projMat, float * invViewMat, float * viewMat, float * modelViewProjMat,
+								enum GraphicsAPI graphicsApi, 
 								const float nearZ, const float farZ)
 {
+	// convert XrFovf into an OpenGL projection matrix.
+	const float tanAngleLeft = tan(layerView->fov.angleLeft);
+	const float tanAngleRight = tan(layerView->fov.angleRight);
+	const float tanAngleDown = tan(layerView->fov.angleDown);
+	const float tanAngleUp = tan(layerView->fov.angleUp);
+	
 	const float tanAngleWidth = tanAngleRight - tanAngleLeft;
 
 	// Set to tanAngleDown - tanAngleUp for a clip space with positive Y down (Vulkan).
@@ -1333,7 +1339,7 @@ void tsoUtilInitProjectionMat(const XrPosef * pose, float* projMat, float * invV
 	
 	
 	// compute view matrix by inverting the pose
-	tsoUtilInitPoseMat(invViewMat, pose);
+	tsoUtilInitPoseMat(invViewMat, &layerView->pose);
 	tsoInvertOrthogonalMat(viewMat, invViewMat);
 	tsoMultiplyMat(modelViewProjMat, projMat, viewMat);
 }
