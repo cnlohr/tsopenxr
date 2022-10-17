@@ -10,13 +10,14 @@
 
 #include "os_generic.h"
 
-#define TSOPENXR_IMPLEMENTATION
-#include "tsopenxr.h"
-
 #define CNFGOGL
 #define CNFGOGL_NEED_EXTENSION
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
+
+#define TSOPENXR_IMPLEMENTATION
+#include "tsopenxr.h"
+
 
 GLuint * colorDepthPairs; // numColorDepthPairs * 2 
 int numColorDepthPairs;
@@ -63,7 +64,7 @@ void (*minXRglBindFramebuffer)( GLenum target, GLuint framebuffer );
 void (*minXRglFramebufferTexture2D)( GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level );
 void (*minXRglUniformMatrix4fv)( GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 void (*minXRglVertexAttribPointer)( GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
-BOOL (*minXRwglSwapIntervalEXT)(int interval);
+void (*minXRwglSwapIntervalEXT)(int interval);
 void (*minXRglBlitNamedFramebuffer)( GLuint readFramebuffer, GLuint drawFramebuffer, GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 void (*minXRglActiveTexture)( GLenum texture );
 void (*minXRglUniform1i)( GLint location, GLint v0 );
@@ -118,7 +119,7 @@ int SetupRendering()
 		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); uv = vUV; }",
 
 		"varying vec2 uv;"
-		"sampler2D texture;"
+		"uniform sampler2D texture;"
 		"void main() { gl_FragColor = vec4(texture2D(texture, uv).rgb, 1.0); }" 
 	);
 	if( textureProgram <= 0 )
@@ -138,8 +139,12 @@ int SetupRendering()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#ifdef ANDROID
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0 );
+#else
 	uint32_t colordata[] = { 0xff000000, 0xff0000ff, 0xff00ff00, 0xffff0000 };
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, colordata );
+#endif
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	int err = glGetError();
@@ -151,13 +156,8 @@ int SetupRendering()
 	return 0;
 }
 
-uint32_t CreateDepthTexture(uint32_t colorTexture)
+uint32_t CreateDepthTexture(uint32_t colorTexture, int width, int height )
 {
-	int32_t width, height;
-	glBindTexture(GL_TEXTURE_2D, colorTexture);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-
 	uint32_t depthTexture;
 	glGenTextures(1, &depthTexture);
 	glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -169,7 +169,7 @@ uint32_t CreateDepthTexture(uint32_t colorTexture)
 	return depthTexture;
 }
 
-uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture )
+uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture, int width, int height )
 {
 	int i;
 	for( i = 0; i < numColorDepthPairs; i++ )
@@ -179,7 +179,7 @@ uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture )
 	}
 	colorDepthPairs = realloc( colorDepthPairs, (numColorDepthPairs+1)*2*sizeof(uint32_t) );
 	colorDepthPairs[numColorDepthPairs*2+0] = colorTexture;
-	int ret = colorDepthPairs[numColorDepthPairs*2+1] = CreateDepthTexture( colorTexture );
+	int ret = colorDepthPairs[numColorDepthPairs*2+1] = CreateDepthTexture( colorTexture, width, height );
 	numColorDepthPairs++;
 	return ret;
 }
@@ -200,8 +200,7 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[i][swapchainImageIndex];
 		
 		uint32_t colorTexture = swapchainImage->image;
-		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture );
-
+		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture, layerView->subImage.imageRect.extent.width, layerView->subImage.imageRect.extent.height );
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
 
 		glViewport(layerView->subImage.imageRect.offset.x,
@@ -213,7 +212,9 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
 		glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
+#ifndef ANDROID
 		glClearDepth(1.0f);
+#endif
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 		const float nearZ = 0.05f;
@@ -257,7 +258,6 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		}
 		
 		
-		
 		CNFGglUseProgram( textureProgram );
 		minXRglUniformMatrix4fv( textureProgramModelViewUniform, 1, GL_FALSE, modelViewProjMat );
 		{
@@ -280,11 +280,10 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		
 		minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// Show debug view.
-		if( i == 0 )
+		if( i == 0 && minXRglBlitNamedFramebuffer )
 		{
 			int targh = layerView->subImage.imageRect.extent.width*windowH/windowW;
 			int thofs = (layerView->subImage.imageRect.extent.height-targh)/2;
@@ -363,6 +362,7 @@ int main()
 			return r;
 		}
 
+
 		CNFGClearFrame();
 		CNFGGetDimensions( &windowW, &windowH );
 
@@ -370,6 +370,15 @@ int main()
 		{
 			return r;
 		}
+
+		#ifdef ANDROID
+		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
+		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, debugTexture, 0);
+		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, GetDepthTextureFromColorTexture( debugTexture, windowW, windowH ), 0);
+
+		glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+		#endif
 
 		glViewport( 0, 0, windowW, windowH );
 
@@ -393,10 +402,10 @@ int main()
 			saveLayerProjectionView.pose.position.z
 		);
 		
-		XrSpaceLocation handLocations[2] = { 0 };
+		XrSpaceLocation handLocations[2] = { };
 		handLocations[0].type = XR_TYPE_SPACE_LOCATION;
 		handLocations[1].type = XR_TYPE_SPACE_LOCATION;
-		XrResult handResults[2];
+		XrResult handResults[4];
 		handResults[0] = xrLocateSpace( TSO.tsoHandSpace[0], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[0] );
 		handResults[1] = xrLocateSpace( TSO.tsoHandSpace[1], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[1] );
 
@@ -416,8 +425,12 @@ int main()
 		);
 
 
-		XrActionStateFloat floatState[2];
-		XrActionStateBoolean boolState[2];
+		XrActionStateFloat floatState[2] = { };
+		floatState[0].type = XR_TYPE_ACTION_STATE_FLOAT;
+		floatState[1].type = XR_TYPE_ACTION_STATE_FLOAT;
+		XrActionStateBoolean boolState[2] = { };
+		boolState[0].type = XR_TYPE_ACTION_STATE_BOOLEAN;
+		boolState[1].type = XR_TYPE_ACTION_STATE_BOOLEAN;
 		XrActionStateGetInfo actionGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
 
 		actionGetInfo.action = TSO.triggerAction;
@@ -447,12 +460,17 @@ int main()
 		CNFGColor( 0xffffffff );
 		CNFGDrawText( debugBuffer, 2 );
 
+		CNFGSwapBuffers();
+
+#ifndef ANDROID
 		glReadBuffer(GL_FRONT);
 		glBindTexture(GL_TEXTURE_2D, debugTexture);
 		glCopyTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, windowW, windowH, 0 );
 		glBindTexture(GL_TEXTURE_2D, 0);
+#else
+		minXRglBindFramebuffer( GL_FRAMEBUFFER, 0 );
+#endif
 
-		CNFGSwapBuffers();
 	}
 
 	return tsoTeardown( &TSO );
@@ -463,3 +481,7 @@ void HandleKey( int keycode, int bDown ) { }
 void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
+
+// On Android.
+void HandleResume() { }
+void HandleSuspend() { }
