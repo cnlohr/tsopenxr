@@ -44,7 +44,6 @@ typedef struct
 	int32_t height;
 } tsoSwapchainInfo;
 
-
 struct tsoContext_t;
 
 // return zero to indicate layer submissions are good.
@@ -87,6 +86,8 @@ typedef struct tsoContext_t
 	XrAction poseAction;
 	XrAction vibrateAction;
 	XrAction menuAction;
+	
+	// Swapchain, etc.
 	
 	tsoSwapchainInfo * tsoSwapchains;
 	XrSwapchainImageOpenGLKHR ** tsoSwapchainImages; //[tsoNumViewConfigs][tsoSwapchainLengths[...]]
@@ -161,15 +162,9 @@ int tsoBeginSession( tsoContext * ctx );
 #include <stdlib.h>
 #include <string.h>
 
-// For limited OpenGL Platforms, Like Windows.
-#ifndef GL_MAJOR_VERSION
-#define GL_MAJOR_VERSION   0x821B
-#endif
-
-#ifndef GL_MINOR_VERSION
-#define GL_MINOR_VERSION   0x821C
-#endif
-
+// So we don't need to #include opengl here.
+//
+// These are currently used to determine the best-fit default texture.
 #ifndef GL_SRGB8_ALPHA8
 #define GL_SRGB8_ALPHA8 0x8C43
 #endif
