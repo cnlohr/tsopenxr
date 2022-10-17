@@ -83,6 +83,7 @@ typedef struct tsoContext_t
 
 	XrAction grabAction;
 	XrAction triggerAction;
+	XrAction triggerActionClick;
 	XrAction poseAction;
 	XrAction vibrateAction;
 	XrAction menuAction;
@@ -573,6 +574,7 @@ int tsoDefaultCreateActions( tsoContext * ctx )
 
 	tsoInitAction( ctx, XR_ACTION_TYPE_FLOAT_INPUT, "grab_object", "Grab Object", &ctx->grabAction );
 	tsoInitAction( ctx, XR_ACTION_TYPE_FLOAT_INPUT, "trigger_action", "Trigger Action", &ctx->triggerAction );
+	tsoInitAction( ctx, XR_ACTION_TYPE_BOOLEAN_INPUT, "trigger_action_click", "Trigger Action Click", &ctx->triggerActionClick );
 	tsoInitAction( ctx, XR_ACTION_TYPE_POSE_INPUT, "hand_pose", "Hand Pose", &ctx->poseAction );
 	tsoInitAction( ctx, XR_ACTION_TYPE_VIBRATION_OUTPUT, "vibrate_hand", "Vibrate Hand", &ctx->vibrateAction );
 	tsoInitAction( ctx, XR_ACTION_TYPE_BOOLEAN_INPUT, "quit_session", "Menu Button", &ctx->menuAction );
@@ -635,6 +637,8 @@ int tsoDefaultCreateActions( tsoContext * ctx )
             {ctx->grabAction, ctx->squeezeValuePath[1]},
             {ctx->triggerAction, ctx->triggerValuePath[0]},
             {ctx->triggerAction, ctx->triggerValuePath[1]},
+			{ctx->triggerActionClick, ctx->triggerValuePath[0]},
+			{ctx->triggerActionClick, ctx->triggerValuePath[1]},
             {ctx->poseAction, ctx->posePath[0]},
             {ctx->poseAction, ctx->posePath[1]},
             {ctx->menuAction, ctx->menuClickPath[0]},

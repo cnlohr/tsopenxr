@@ -296,7 +296,7 @@ int main()
 	system("");
 	#endif
 
-	CNFGSetup( "TSOpenXR Example", 640, 360 );
+	CNFGSetup( "TSOpenXR Example", 256, 256 );
 
 	int32_t major = 0;
 	int32_t minor = 0;
@@ -404,17 +404,30 @@ int main()
 
 
 		XrActionStateFloat floatState[2];
+		XrActionStateBoolean boolState[2];
 		XrActionStateGetInfo actionGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+
 		actionGetInfo.action = TSO.triggerAction;
 		actionGetInfo.subactionPath = TSO.handPath[0];
 		handResults[0] = tsoCheck( &TSO, xrGetActionStateFloat( TSO.tsoSession, &actionGetInfo, floatState + 0 ), "xrGetActionStateFloat1" );
 		actionGetInfo.subactionPath = TSO.handPath[1];
 		handResults[1] = tsoCheck( &TSO, xrGetActionStateFloat( TSO.tsoSession, &actionGetInfo, floatState + 1 ), "xrGetActionStateFloat2" );
+
+		actionGetInfo.action = TSO.triggerActionClick;
+		actionGetInfo.subactionPath = TSO.handPath[0];
+		handResults[2] = tsoCheck( &TSO, xrGetActionStateBoolean( TSO.tsoSession, &actionGetInfo, boolState + 0 ), "XrActionStateBoolean1" );
+		actionGetInfo.subactionPath = TSO.handPath[1];
+		handResults[3] = tsoCheck( &TSO, xrGetActionStateBoolean( TSO.tsoSession, &actionGetInfo, boolState + 1 ), "XrActionStateBoolean 2" );
+
 		dbg += snprintf( dbg, sizeof(debugBuffer)-1-(dbg-debugBuffer), 
-			"Input1 %d %d %f\n"
-			"Input2 %d %d %f\n",
+			"Input1 Analog %d %d %f\n"
+			"Input2 Analog %d %d %f\n"
+			"Input1 Digital %d %d %d\n"
+			"Input2 Digital %d %d %d\n",
 			handResults[0], floatState[0].isActive, floatState[0].currentState,
-			handResults[1], floatState[1].isActive, floatState[1].currentState );
+			handResults[1], floatState[1].isActive, floatState[1].currentState,
+			handResults[2], boolState[0].isActive, boolState[0].currentState,
+			handResults[3], boolState[1].isActive, boolState[1].currentState );
 			
 		CNFGPenX = 1;
 		CNFGPenY = 1;
@@ -428,7 +441,6 @@ int main()
 
 		CNFGSwapBuffers();
 	}
-
 
 	return tsoTeardown( &TSO );
 }
