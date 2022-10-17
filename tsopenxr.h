@@ -531,7 +531,7 @@ int tsoInitAction( tsoContext * ctx, XrActionType type, const char * action_name
 	if( result )
 	{
 		char actionError[1024];
-		snprintf( actionError, sizeof(actionError)-1, "xrCreateAction %s" );
+		snprintf( actionError, sizeof(actionError)-1, "xrCreateAction %s", action_name );
 		tsoCheck(ctx, result, actionError);
 	}
 	return result;
@@ -555,8 +555,6 @@ int tsoDefaultCreateActions( tsoContext * ctx )
 	{
 		return result;
 	}
-
-	XrActionSet tsoActionSet = ctx->tsoActionSet;
 
 	xrStringToPath(tsoInstance, "/user/hand/left", &ctx->handPath[0]);
 	xrStringToPath(tsoInstance, "/user/hand/right", &ctx->handPath[1]);

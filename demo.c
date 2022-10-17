@@ -189,8 +189,6 @@ uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture )
 
 int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLayerProjectionView * projectionLayerViews, int viewCountOutput )
 {
-	XrResult  result;
-
 	// Render view to the appropriate part of the swapchain image.
 	for (uint32_t i = 0; i < viewCountOutput; i++)
 	{
