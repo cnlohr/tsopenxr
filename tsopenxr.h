@@ -31,11 +31,20 @@
 #include <Windows.h>
 #elif defined(__ANDROID__)
 #define XR_USE_PLATFORM_ANDROID
+#define XR_USE_GRAPHICS_API_OPENGL_ES
 #else
 #define XR_USE_PLATFORM_XLIB
 #endif
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+
+#ifdef XR_USE_PLATFORM_ANDROID
+	#define OPENXR_SELECTED_GRAPHICS_API XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME
+#else
+	#define OPENXR_SELECTED_GRAPHICS_API XR_KHR_OPENGL_ENABLE_EXTENSION_NAME
+#endif
+
 
 typedef struct
 {
@@ -177,14 +186,35 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 	memset( ctx, 0, sizeof( *ctx ) );
 	ctx->opaque = opaque;
 	ctx->tsoPrintAll = !!(flags & TSO_DO_DEBUG);
+
+#ifdef XR_USE_PLATFORM_ANDROID
+	PFN_xrInitializeLoaderKHR loaderFunc;
+	XrResult result = xrGetInstanceProcAddr( XR_NULL_HANDLE, "xrInitializeLoaderKHR", (PFN_xrVoidFunction*)&loaderFunc );
+
+	if( tsoCheck( 0, result, "xrGetInstanceProcAddr(xrInitializeLoaderKHR)" ) )
+	{
+		return result;
+	}
+
+	XrLoaderInitInfoAndroidKHR init_data = { 0 };
+	struct android_app* app = gapp;
+	const struct JNIInvokeInterface ** jniiptr = app->activity->vm;
+	jobject activity = app->activity->clazz;
+
+	init_data.type = XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR;
+	init_data.applicationVM = jniiptr;
+	init_data.applicationContext = activity;
+	loaderFunc( &init_data );
+#endif
+
 	if( ( tsoEnumerateExtensions( ctx ) ) )
 	{
 		return 1;
 	}
 
-	if( ! tsoExtensionSupported( ctx, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME ) )
+	if( ! tsoExtensionSupported( ctx, OPENXR_SELECTED_GRAPHICS_API ) )
 	{
-		TSOPENXR_ERROR("XR_KHR_opengl_enable not supported!\n");
+		TSOPENXR_ERROR(OPENXR_SELECTED_GRAPHICS_API" not supported!\n");
 		return 1;
 	}
 
@@ -316,7 +346,7 @@ int tsoCreateInstance(tsoContext * ctx, const char * appname )
 
 	// create openxr tsoInstance
 	XrResult result;
-	const char* const enabledExtensions[] = {XR_KHR_OPENGL_ENABLE_EXTENSION_NAME};
+	const char* const enabledExtensions[] = {OPENXR_SELECTED_GRAPHICS_API};
 	XrInstanceCreateInfo ici;
 	ici.type = XR_TYPE_INSTANCE_CREATE_INFO;
 	ici.next = NULL;
@@ -459,6 +489,7 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 
 	// check if opengl version is sufficient.
 	{
+#ifndef ANDROID
 		XrGraphicsRequirementsOpenGLKHR reqs;
 		reqs.type = XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR;
 		reqs.next = NULL;
@@ -476,7 +507,6 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 		}
 
 		const XrVersion desiredApiVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
-
 #if TSOPENXR_ENABLE_DEBUG
 		if (ctx->tsoPrintAll)
 		{
@@ -491,20 +521,65 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 			TSOPENXR_INFO("Runtime does not support desired Graphics API and/or version\n");
 			return result;
 		}
+#endif
 	}
 
+
+#ifdef ANDROID
+
+    // Get the graphics requirements.
+    PFN_xrGetOpenGLESGraphicsRequirementsKHR pfnGetOpenGLESGraphicsRequirementsKHR = NULL;
+    xrGetInstanceProcAddr(
+        ctx->tsoInstance,
+        "xrGetOpenGLESGraphicsRequirementsKHR",
+        (PFN_xrVoidFunction*)(&pfnGetOpenGLESGraphicsRequirementsKHR));
+
+    XrGraphicsRequirementsOpenGLESKHR graphicsRequirements = {};
+    graphicsRequirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR;
+    result = pfnGetOpenGLESGraphicsRequirementsKHR(ctx->tsoInstance, ctx->tsoSystemId, &graphicsRequirements);
+	if (tsoCheck(ctx, result, "pfnGetOpenGLESGraphicsRequirementsKHR"))
+	{
+		return result;
+	}
+
+#if TSOPENXR_ENABLE_DEBUG
+		if (ctx->tsoPrintAll)
+		{
+			const XrVersion desiredApiVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
+			TSOPENXR_INFO("current OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(desiredApiVersion),
+				   XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
+			TSOPENXR_INFO("minimum OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(graphicsRequirements.minApiVersionSupported),
+				   XR_VERSION_MINOR(graphicsRequirements.minApiVersionSupported), XR_VERSION_PATCH(graphicsRequirements.minApiVersionSupported));
+		}
+#endif
+    // Check the graphics requirements.
+    const XrVersion eglVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
+    if (eglVersion < graphicsRequirements.minApiVersionSupported ||
+        eglVersion > graphicsRequirements.maxApiVersionSupported) {
+        TSOPENXR_ERROR("GLES version %d.%d not supported", openglMajor, openglMinor);
+        return -1;
+    }
+#endif
+
+
+    // Create the OpenXR Session.
+
 #ifdef XR_USE_PLATFORM_WIN32
-	XrGraphicsBindingOpenGLWin32KHR glBinding;
+	XrGraphicsBindingOpenGLWin32KHR glBinding = {};
 	glBinding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR;
 	glBinding.next = NULL;
 	glBinding.hDC = wglGetCurrentDC();
 	glBinding.hGLRC = wglGetCurrentContext();
-#else
-	// XrGraphicsBindingOpenGLXlibKHR
-	// XrGraphicsBindingOpenGLESAndroidKHR
+#elif defined( XR_USE_PLATFORM_ANDROID )
+	XrGraphicsBindingOpenGLESAndroidKHR glBinding = {};
+	glBinding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR;
+	glBinding.next = NULL;
+	glBinding.display = egl_display;
+	glBinding.config = egl_config;
+	glBinding.context = egl_context;
 #endif
 
-	XrSessionCreateInfo sci;
+	XrSessionCreateInfo sci = { 0 };
 	sci.type = XR_TYPE_SESSION_CREATE_INFO;
 	sci.next = &glBinding;
 	sci.systemId = tsoSystemId;
@@ -814,7 +889,7 @@ int tsoCreateSwapchains( tsoContext * ctx )
 	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, tsoNumViewConfigs * sizeof( uint32_t ) );
 	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
 	{
-		XrSwapchainCreateInfo sci;
+		XrSwapchainCreateInfo sci = { 0 };
 		sci.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
 		sci.next = NULL;
 		sci.createFlags = 0;
@@ -839,7 +914,7 @@ int tsoCreateSwapchains( tsoContext * ctx )
 		(*tsoSwapchains)[i].height = sci.height;
 
 		result = xrEnumerateSwapchainImages((*tsoSwapchains)[i].handle, 0, &(*tsoSwapchainLengths)[i], NULL);
-		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages"))
+		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages [view]"))
 		{
 			return result;
 		}
@@ -851,14 +926,18 @@ int tsoCreateSwapchains( tsoContext * ctx )
 		(*tsoSwapchainImages)[i] = malloc( (*tsoSwapchainLengths)[i] * sizeof(XrSwapchainImageOpenGLKHR) );
 		for (uint32_t j = 0; j < (*tsoSwapchainLengths)[i]; j++)
 		{
+#ifdef ANDROID
+			(*tsoSwapchainImages)[i][j].type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR;
+#else
 			(*tsoSwapchainImages)[i][j].type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR;
+#endif
 			(*tsoSwapchainImages)[i][j].next = NULL;
 		}
 
 		result = xrEnumerateSwapchainImages((*tsoSwapchains)[i].handle, (*tsoSwapchainLengths)[i], &(*tsoSwapchainLengths)[i],
 											(XrSwapchainImageBaseHeader*)((*tsoSwapchainImages)[i]));
 
-		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages"))
+		if (tsoCheck(ctx, result, "xrEnumerateSwapchainImages [final]"))
 		{
 			return result;
 		}
@@ -1028,7 +1107,7 @@ int tsoRenderFrame( tsoContext * ctx )
 
 int tsoHandleLoop( tsoContext * ctx )
 {
-	XrEventDataBuffer xrEvent;
+	XrEventDataBuffer xrEvent = { 0 };
 	xrEvent.type = XR_TYPE_EVENT_DATA_BUFFER;
 	xrEvent.next = NULL;
 
