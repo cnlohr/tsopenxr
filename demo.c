@@ -50,6 +50,13 @@ tsoContext TSO;
 #define GL_DEPTH_COMPONENT24 0x81A6
 #endif
 
+#ifndef GL_MAJOR_VERSION
+#define GL_MAJOR_VERSION   0x821B
+#endif
+
+#ifndef GL_MINOR_VERSION
+#define GL_MINOR_VERSION   0x821C
+#endif
 
 void (*minXRglGenFramebuffers)( GLsizei n, GLuint *ids );
 void (*minXRglBindFramebuffer)( GLenum target, GLuint framebuffer );

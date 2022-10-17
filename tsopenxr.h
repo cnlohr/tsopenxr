@@ -162,9 +162,7 @@ int tsoBeginSession( tsoContext * ctx );
 #include <stdlib.h>
 #include <string.h>
 
-// So we don't need to #include opengl here.
-//
-// These are currently used to determine the best-fit default texture.
+// For limited OpenGL Platforms, Like Windows.
 #ifndef GL_SRGB8_ALPHA8
 #define GL_SRGB8_ALPHA8 0x8C43
 #endif
