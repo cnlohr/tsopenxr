@@ -600,7 +600,7 @@ int tsoDefaultCreateActions( tsoContext * ctx )
 		return result;
 	}
 
-	// KHR Simple
+	// KHR Simple (no need on most runtimes; it's rough to map)
 	if( 0 ){
 		XrPath interactionProfilePath = XR_NULL_PATH;
 		xrStringToPath(tsoInstance, "/interaction_profiles/khr/simple_controller", &interactionProfilePath);
@@ -628,7 +628,7 @@ int tsoDefaultCreateActions( tsoContext * ctx )
 		}
 	}
 
-    // oculus touch (Auto-remaps to to Index)
+    // Oculus touch (Auto-remaps well to Index)
     {
         XrPath interactionProfilePath = XR_NULL_PATH;
         xrStringToPath(tsoInstance, "/interaction_profiles/oculus/touch_controller", &interactionProfilePath);
