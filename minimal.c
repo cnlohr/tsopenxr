@@ -10,6 +10,9 @@
 
 #include "os_generic.h"
 
+// Force debugging off for smaller executable.
+#define TSOPENXR_ENABLE_DEBUG 0
+
 #define TSOPENXR_IMPLEMENTATION
 #include "tsopenxr.h"
 

@@ -296,6 +296,7 @@ int tsoEnumerateLayers( tsoContext * ctx )
 		return result;
 	}
 
+#if TSOPENXR_ENABLE_DEBUG
 	if( ctx->tsoPrintAll )
 	{
 		TSOPENXR_INFO("%d layers:\n", layerCount);
@@ -304,6 +305,7 @@ int tsoEnumerateLayers( tsoContext * ctx )
 			TSOPENXR_INFO("	%s, %s\n", (*tsoLayerProps)[i].layerName, (*tsoLayerProps)[i].description);
 		}
 	}
+#endif
 	ctx->tsoNumLayerProps = layerCount;
 	return 0;
 }

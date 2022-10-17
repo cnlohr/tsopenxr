@@ -1,0 +1,32 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-all",
+            "type": "shell",
+            "args": [
+                "demo.c", "-o demo.exe", "-I.", "-luser32", "-lopengl32", "-lgdi32", "openxr_loader.dll", "-Wall", "-g"
+            ],
+            "command": "tcc",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "build-all",
+            "type": "shell",
+            "args": [
+                "minimal.c", "-o minimal.exe", "-I.", "-luser32", "-lopengl32", "-lgdi32", "openxr_loader.dll", "-Wall", "-g"
+            ],
+            "command": "tcc",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+  }
+  
