@@ -10,7 +10,7 @@ all : makecapk.apk
 APPNAME?=tsopenxrtest
 LABEL?=$(APPNAME)
 APKFILE ?= $(APPNAME).apk
-PACKAGENAME?=org.yourorg.$(APPNAME)
+PACKAGENAME?=org.cnlohr.$(APPNAME)
 RAWDRAWANDROID?=.
 RAWDRAWANDROIDSRCS=$(RAWDRAWANDROID)/android_native_app_glue.c
 SRC?=../demo.c
@@ -27,11 +27,6 @@ LDFLAGS?=-Wl,--gc-sections -s
 ANDROID_FULLSCREEN?=y
 ADB?=adb
 UNAME := $(shell uname)
-
-
-
-libopenxr_loader.so :
-	echo "Can't find libopenxr_loader.so. Please download from https://developer.oculus.com/downloads/package/oculus-openxr-mobile-sdk/"
 
 ANDROIDSRCS:= $(SRC) $(RAWDRAWANDROIDSRCS) libopenxr_loader.so
 
@@ -159,7 +154,7 @@ makecapk.apk : $(TARGETS) $(EXTRA_ASSETS_TRIGGER) AndroidManifest.xml
 	rm -rf $(APKFILE)
 	$(BUILD_TOOLS)/zipalign -v 4 makecapk.apk $(APKFILE)
 	#Using the apksigner in this way is only required on Android 30+
-	#$(BUILD_TOOLS)/apksigner sign --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS) --ks $(KEYSTOREFILE) $(APKFILE)
+	$(BUILD_TOOLS)/apksigner sign --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS) --ks $(KEYSTOREFILE) $(APKFILE)
 	rm -rf temp.apk
 	rm -rf makecapk.apk
 	@ls -l $(APKFILE)
