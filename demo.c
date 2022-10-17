@@ -34,6 +34,13 @@ XrCompositionLayerProjectionView saveLayerProjectionView;
 
 tsoContext TSO;
 
+
+
+//
+// We may be operating on a really primitive OpenGL version.
+// No need to include GLEW or anything like that!
+//
+
 #ifndef GL_FRAMEBUFFER
 #define GL_TEXTURE0 0x84C0
 #define GL_FRAMEBUFFER	 0x8D40
@@ -67,7 +74,9 @@ void EnumOpenGLExtensions()
 	minXRglUniform1i = CNFGGetProcAddress( "glUniform1i" );
 }
 
-
+// Setup rendering, loading shaders.
+// We do use the convenience functions from
+// rawdraw for shader loading admittedly.
 int SetupRendering()
 {
 	minXRglGenFramebuffers(1, &frameBuffer);
@@ -116,7 +125,6 @@ int SetupRendering()
 	CNFGglBindAttribLocation( textureProgram, 0, "vPos" );
 	CNFGglBindAttribLocation( textureProgram, 1, "vUV" );
 
-	// Generate a texture to copy the 
 	glGenTextures(1, &debugTexture);
 	glBindTexture(GL_TEXTURE_2D, debugTexture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -275,7 +283,7 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		{
 			int targh = layerView->subImage.imageRect.extent.width*windowH/windowW;
 			int thofs = (layerView->subImage.imageRect.extent.height-targh)/2;
-			minXRglBlitNamedFramebuffer( frameBuffer, 0, 0, thofs, layerView->subImage.imageRect.extent.width, targh+thofs, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_NEAREST );
+			minXRglBlitNamedFramebuffer( frameBuffer, 0, 0, thofs, layerView->subImage.imageRect.extent.width, targh+thofs, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR );
 		}
 
 		tsoReleaseSwapchain( &TSO, i );
