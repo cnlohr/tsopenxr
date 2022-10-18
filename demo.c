@@ -339,7 +339,7 @@ int main()
 	EnumOpenGLExtensions();
 
 	if( SetupRendering() ) return -1;
-	
+
 	if ( ( r = tsoDefaultCreateActions( &TSO ) ) ) return r;
 	
 	// Disable vsync, on appropriate system.
@@ -466,7 +466,68 @@ int main()
 			handResults[1], floatState[1].isActive, floatState[1].currentState,
 			handResults[2], boolState[0].isActive, boolState[0].currentState,
 			handResults[3], boolState[1].isActive, boolState[1].currentState );
-			
+
+#ifdef ANDROID
+
+
+
+		// Use Oculus hand tracking.
+		XrHandTrackerEXT trackingHands[2] = { };
+
+		static PFN_xrLocateHandJointsEXT xrLocateHandJointsEXT_;
+		static PFN_xrCreateHandTrackerEXT xrCreateHandTrackerEXT_;
+
+
+		if( !xrCreateHandTrackerEXT_ )
+			{
+
+			XrSystemHandTrackingPropertiesEXT handTrackingSystemProperties = {XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
+			XrSystemProperties systemProperties = { XR_TYPE_SYSTEM_PROPERTIES, &handTrackingSystemProperties};
+			tsoCheck(&TSO, xrGetSystemProperties(TSO.tsoInstance, TSO.tsoSystemId, &systemProperties), "sysProp" );
+
+			printf( "SYSTEM SUPPORTS HAND TRACKING: %d\n", handTrackingSystemProperties.supportsHandTracking );
+
+			tsoCheck( &TSO, xrGetInstanceProcAddr(
+				    TSO.tsoInstance,
+				    "xrCreateHandTrackerEXT",
+				    (PFN_xrVoidFunction*)(&xrCreateHandTrackerEXT_)), "GPO xrCreateHandTrackerEXT" );
+
+			tsoCheck( &TSO, xrGetInstanceProcAddr(
+				    TSO.tsoInstance,
+				    "xrLocateHandJointsEXT",
+				    (PFN_xrVoidFunction*)(&xrLocateHandJointsEXT_)), "GPO xrLocateHandJointsEXT" );
+
+
+			XrHandTrackerCreateInfoEXT handTrackCreateInfo = { XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT };
+			if( xrCreateHandTrackerEXT_ )
+			{
+				handTrackCreateInfo.hand = XR_HAND_LEFT_EXT;
+				r = xrCreateHandTrackerEXT_( TSO.tsoSession, &handTrackCreateInfo, &trackingHands[0] );
+				tsoCheck( &TSO, r, "xrCreateHandTrackerEXT" );
+				handTrackCreateInfo.hand = XR_HAND_RIGHT_EXT;
+				r = xrCreateHandTrackerEXT_( TSO.tsoSession, &handTrackCreateInfo, &trackingHands[1] );
+				tsoCheck( &TSO, r, "xrCreateHandTrackerEXT" );
+			}
+
+			printf( "************************* HOKAY %p %p\n", trackingHands[0], trackingHands[1] );
+
+
+		}
+
+		if( xrLocateHandJointsEXT_ )
+		{
+			XrHandJointLocationsEXT HandLocations[2] = { { XR_TYPE_HAND_JOINT_LOCATIONS_EXT }, { XR_TYPE_HAND_JOINT_LOCATIONS_EXT } };
+		    XrHandJointsLocateInfoEXT locateInfo = {XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+		    locateInfo.baseSpace = TSO.tsoStageSpace;
+		    locateInfo.time = TSO.tsoPredictedDisplayTime;
+	        tsoCheck( &TSO, xrLocateHandJointsEXT_(trackingHands[0], &locateInfo, HandLocations+0), "xrLocateHandJointsEXT" ) ;
+    	    tsoCheck( &TSO, xrLocateHandJointsEXT_(trackingHands[1], &locateInfo, HandLocations+1), "xrLocateHandJointsEXT" ) ;
+			dbg += snprintf( dbg, sizeof(debugBuffer)-1-(dbg-debugBuffer), 
+				"Hand %d %d / %d %d\n", HandLocations[0].isActive, HandLocations[0].jointCount,
+				HandLocations[1].isActive, HandLocations[1].jointCount );
+		}
+#endif
+
 		CNFGPenX = 1;
 		CNFGPenY = 1;
 		CNFGColor( 0xffffffff );

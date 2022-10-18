@@ -197,8 +197,8 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 	ctx->tsoPrintAll = !!(flags & TSO_DO_DEBUG);
 
 #ifdef XR_USE_PLATFORM_ANDROID
-	PFN_xrInitializeLoaderKHR loaderFunc;
-	XrResult result = xrGetInstanceProcAddr( XR_NULL_HANDLE, "xrInitializeLoaderKHR", (PFN_xrVoidFunction*)&loaderFunc );
+	PFN_xrInitializeLoaderKHR xrInitializeLoaderKHR_;
+	XrResult result = xrGetInstanceProcAddr( XR_NULL_HANDLE, "xrInitializeLoaderKHR", (PFN_xrVoidFunction*)&xrInitializeLoaderKHR_ );
 
 	if( tsoCheck( 0, result, "xrGetInstanceProcAddr(xrInitializeLoaderKHR)" ) )
 	{
@@ -211,7 +211,7 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 	jobject activity = app->activity->clazz;
 	init_data.applicationVM = jniiptr;
 	init_data.applicationContext = activity;
-	loaderFunc( &init_data );
+	xrInitializeLoaderKHR_( (XrLoaderInitInfoBaseHeaderKHR*)&init_data );
 #endif
 
 	if( ( tsoEnumerateExtensions( ctx ) ) )
@@ -224,6 +224,9 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 		TSOPENXR_ERROR(OPENXR_SELECTED_GRAPHICS_API" not supported!\n");
 		return 1;
 	}
+
+
+
 
 	if( ( r = tsoCreateInstance( ctx, appname ) ) ) return r;
 	if( ( r = tsoEnumerateLayers( ctx ) ) ) return r;

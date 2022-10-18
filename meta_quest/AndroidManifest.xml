@@ -3,8 +3,15 @@
 	<uses-sdk android:minSdkVersion="29"
           android:targetSdkVersion="29" />
     <uses-permission android:name="android.permission.SET_RELEASE_APP"/>
+
+
+	<uses-feature android:glEsVersion="0x00030001" android:required="true" />
+	<uses-feature android:name="android.hardware.vr.headtracking" android:required="true" />
+	<uses-feature android:name="oculus.software.handtracking" android:required="true" />
+	<uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
+
     <application android:debuggable="true" android:hasCode="false" android:label="tsopenxrtest" tools:replace="android:icon,android:theme,android:allowBackup,label" android:icon="@mipmap/icon">
-        <activity android:configChanges="keyboardHidden|orientation" android:label="tsopenxrtest" android:name="android.app.NativeActivity">
+        <activity android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode" android:label="tsopenxrtest" android:name="android.app.NativeActivity">
             <meta-data android:name="android.app.lib_name" android:value="tsopenxrtest"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
