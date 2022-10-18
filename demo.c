@@ -22,12 +22,11 @@
 	#define GLES_VER_TARG "100"
 	#define TARGET_OFFSCREEN
 #elif defined(USE_WINDOWS)
-	#define GLES_VER_TARG "100"
+	#define GLES_VER_TARG "150"
 #else
 	// OpenGL 4.3, desktop.
 	#define GLES_VER_TARG "150"
 #endif
-
 
 
 GLuint * colorDepthPairs; // numColorDepthPairs * 2 
@@ -317,7 +316,7 @@ int main()
 	int r;
 
 	// Tell windows we want to use VT100 terminal color codes.
-	#ifdef USE_WINDOWS
+	#if defined( USE_WINDOWS ) && !defined( _MSC_VER )
 	system("");
 	#endif
 
@@ -415,9 +414,7 @@ int main()
 			saveLayerProjectionView.pose.position.z
 		);
 		
-		XrSpaceLocation handLocations[2] = { };
-		handLocations[0].type = XR_TYPE_SPACE_LOCATION;
-		handLocations[1].type = XR_TYPE_SPACE_LOCATION;
+		XrSpaceLocation handLocations[2] = { { XR_TYPE_SPACE_LOCATION }, { XR_TYPE_SPACE_LOCATION } };
 		XrResult handResults[4];
 		handResults[0] = xrLocateSpace( TSO.tsoHandSpace[0], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[0] );
 		handResults[1] = xrLocateSpace( TSO.tsoHandSpace[1], TSO.tsoStageSpace, TSO.tsoPredictedDisplayTime, &handLocations[1] );
@@ -438,12 +435,8 @@ int main()
 		);
 
 
-		XrActionStateFloat floatState[2] = { };
-		floatState[0].type = XR_TYPE_ACTION_STATE_FLOAT;
-		floatState[1].type = XR_TYPE_ACTION_STATE_FLOAT;
-		XrActionStateBoolean boolState[2] = { };
-		boolState[0].type = XR_TYPE_ACTION_STATE_BOOLEAN;
-		boolState[1].type = XR_TYPE_ACTION_STATE_BOOLEAN;
+		XrActionStateFloat floatState[2] = { { XR_TYPE_ACTION_STATE_FLOAT }, { XR_TYPE_ACTION_STATE_FLOAT } };
+		XrActionStateBoolean boolState[2] = { { XR_TYPE_ACTION_STATE_BOOLEAN }, { XR_TYPE_ACTION_STATE_BOOLEAN } };
 		XrActionStateGetInfo actionGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
 
 		actionGetInfo.action = TSO.triggerAction;
