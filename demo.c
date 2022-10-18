@@ -201,37 +201,38 @@ uint32_t GetDepthTextureFromColorTexture( uint32_t colorTexture, int width, int 
 
 int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLayerProjectionView * projectionLayerViews, int viewCountOutput )
 {
+	
+	// If each view has a separate swapchain which is acquired, rendered to, and released.
+	// then it would need to be inside the for loop.  But we don't do that here, because
+	// we are double-wide;
+	uint32_t swapchainImageIndex;
+	tsoAcquireSwapchain( ctx, 0, &swapchainImageIndex );
+	const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[0][swapchainImageIndex];
+
+	#ifdef XR_USE_PLATFORM_XLIB
+	glXMakeCurrent( CNFGDisplay, CNFGWindow, CNFGCtx );
+	#endif
+
+	uint32_t colorTexture = swapchainImage->image;
+	uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture, ctx->tsoSwapchains[0].width, ctx->tsoSwapchains[0].height );
+	minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
+	minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+	minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
+	glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
+#ifndef ANDROID
+	glClearDepth(1.0f);
+#endif
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
 	// Render view to the appropriate part of the swapchain image.
 	for (uint32_t i = 0; i < viewCountOutput; i++)
 	{
 		XrCompositionLayerProjectionView * layerView = projectionLayerViews + i;
-		uint32_t swapchainImageIndex;
-
-		// Each view has a separate swapchain which is acquired, rendered to, and released.
-		tsoAcquireSwapchain( ctx, i, &swapchainImageIndex );
-		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[i][swapchainImageIndex];
-
-		#ifdef XR_USE_PLATFORM_XLIB
-		glXMakeCurrent( CNFGDisplay, CNFGWindow, CNFGCtx );
-		#endif
-
-		uint32_t colorTexture = swapchainImage->image;
-		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture, layerView->subImage.imageRect.extent.width, layerView->subImage.imageRect.extent.height );
-		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
-
 		glViewport(layerView->subImage.imageRect.offset.x,
 				   layerView->subImage.imageRect.offset.y,
 				   layerView->subImage.imageRect.extent.width,
 				   layerView->subImage.imageRect.extent.height);
-
-		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
-		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
-
-		glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
-#ifndef ANDROID
-		glClearDepth(1.0f);
-#endif
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 		const float nearZ = 0.05f;
 		const float farZ = 100.0f;
@@ -296,8 +297,6 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 		// Show debug view.
 		if( i == 0 && minXRglBlitNamedFramebuffer )
 		{
@@ -306,8 +305,9 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 			minXRglBlitNamedFramebuffer( frameBuffer, 0, 0, thofs, layerView->subImage.imageRect.extent.width, targh+thofs, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR );
 		}
 
-		tsoReleaseSwapchain( &TSO, i );
 	}
+	minXRglBindFramebuffer(GL_FRAMEBUFFER, 0);
+	tsoReleaseSwapchain( &TSO, 0 );
 
 	memcpy( &saveLayerProjectionView, projectionLayerViews, sizeof( saveLayerProjectionView ) );
 
@@ -331,7 +331,7 @@ int main()
 	glGetIntegerv(GL_MAJOR_VERSION, &major);
 	glGetIntegerv(GL_MINOR_VERSION, &minor);
 	
-	if( ( r = tsoInitialize( &TSO, major, minor, TSO_DO_DEBUG, "TSOpenXR Example", 0 ) ) ) return r;
+	if( ( r = tsoInitialize( &TSO, major, minor, TSO_DO_DEBUG | TSO_DOUBLEWIDE, "TSOpenXR Example", 0 ) ) ) return r;
 	
 	// Assign a layer render function.
 	TSO.tsoRenderLayer = RenderLayer;
@@ -341,8 +341,6 @@ int main()
 	if( SetupRendering() ) return -1;
 	
 	if ( ( r = tsoDefaultCreateActions( &TSO ) ) ) return r;
-	
-	if ( ( r = tsoCreateSwapchains( &TSO ) ) ) return r;
 	
 	// Disable vsync, on appropriate system.
 	#ifdef USE_WINDOWS
@@ -476,6 +474,7 @@ int main()
 
 		CNFGSwapBuffers();
 
+		// Tricky: If we are doing off-screen rendering, we have to copy-pasta our debug window into a texture.
 #ifndef TARGET_OFFSCREEN
 		glReadBuffer(GL_FRONT);
 		glBindTexture(GL_TEXTURE_2D, debugTexture);

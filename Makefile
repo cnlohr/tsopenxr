@@ -1,10 +1,10 @@
 
 ifeq ($(OS),Windows_NT)
-CFLAGS:=-I. -s -Os
+CFLAGS:=-I. -g -Og
 LDFLAGS:=-luser32 -lm -lopengl32 -lgdi32 ./openxr_loader.dll
 EX_:=.exe
 else
-CFLAGS:=-I. -s -Os
+CFLAGS:=-I. -g -Og
 LDFLAGS:=-lX11 -lm -lGL ./libopenxr_loader.so
 endif
 

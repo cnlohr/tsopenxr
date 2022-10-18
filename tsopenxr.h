@@ -98,6 +98,7 @@ typedef struct tsoContext_t
 	
 	// Swapchain, etc.
 	
+	int numSwapchainsPerFrame;
 	tsoSwapchainInfo * tsoSwapchains;
 	XrSwapchainImageOpenGLKHR ** tsoSwapchainImages; //[tsoNumViewConfigs][tsoSwapchainLengths[...]]
 	uint32_t * tsoSwapchainLengths; //[tsoNumViewConfigs]
@@ -108,6 +109,7 @@ typedef struct tsoContext_t
 	int tsoSessionReady;
 	XrSessionState tsoXRState;
 	tsoRenderLayerFunction_t tsoRenderLayer;
+	int flags;
 	void * opaque;
 } tsoContext;
 
@@ -126,7 +128,8 @@ typedef struct tsoContext_t
 #endif
 
 // Init Flags
-#define TSO_DO_DEBUG 1
+#define TSO_DO_DEBUG 1    // Log all
+#define TSO_DOUBLEWIDE 2  // Enable double-wide frames.
 
 // Most functions return 0 on success.
 // nonzero on failure.
@@ -141,6 +144,7 @@ int tsoSyncInput( tsoContext * ctx );
 int tsoRenderFrame( tsoContext * ctx );
 int tsoAcquireSwapchain( tsoContext * ctx, int swapchain, uint32_t * swapchainImageIndex );
 int tsoReleaseSwapchain( tsoContext * ctx, int swapchain );
+int tsoDestroySwapchains( tsoContext * ctx );
 int tsoTeardown( tsoContext * ctx );
 
 // Utility functions
@@ -189,6 +193,7 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 	int r;
 	memset( ctx, 0, sizeof( *ctx ) );
 	ctx->opaque = opaque;
+	ctx->flags = flags;
 	ctx->tsoPrintAll = !!(flags & TSO_DO_DEBUG);
 
 #ifdef XR_USE_PLATFORM_ANDROID
@@ -443,29 +448,34 @@ int tsoEnumeratetsoViewConfigs( tsoContext * ctx )
 	XrSystemId tsoSystemId = ctx->tsoSystemId;
 	
 	XrResult result;
-	uint32_t viewCount;
+	uint32_t viewCount = ctx->tsoNumViewConfigs;
 	XrViewConfigurationType stereoViewConfigType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, 0, &viewCount, NULL);
+	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, viewCount, &viewCount, ctx->tsoViewConfigs);
 	if (tsoCheck(ctx, result, "xrEnumerateViewConfigurationViews"))
 	{
 		return result;
 	}
 
-	XrViewConfigurationView * tsoViewConfigs = ctx->tsoViewConfigs = realloc( ctx->tsoViewConfigs, viewCount * sizeof(XrViewConfigurationView) );
-	for (uint32_t i = 0; i < viewCount; i++)
-	{
-		tsoViewConfigs[i].type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
-		tsoViewConfigs[i].next = NULL;
-	}
+	XrViewConfigurationView * tsoViewConfigs = ctx->tsoViewConfigs;
 
-	result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, viewCount, &viewCount, tsoViewConfigs);
-	if (tsoCheck(ctx, result, "xrEnumerateViewConfigurationViews"))
+	if( ctx->tsoNumViewConfigs != viewCount )
 	{
-		return result;
+		tsoViewConfigs = ctx->tsoViewConfigs = realloc( ctx->tsoViewConfigs, viewCount * sizeof(XrViewConfigurationView) );
+		for (uint32_t i = 0; i < viewCount; i++)
+		{
+			tsoViewConfigs[i].type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
+			tsoViewConfigs[i].next = NULL;
+		}
+
+		result = xrEnumerateViewConfigurationViews(tsoInstance, tsoSystemId, stereoViewConfigType, viewCount, &viewCount, tsoViewConfigs);
+		if (tsoCheck(ctx, result, "xrEnumerateViewConfigurationViews"))
+		{
+			return result;
+		}
 	}
 
 #if TSOPENXR_ENABLE_DEBUG
-	if (ctx->tsoPrintAll)
+	if (ctx->tsoPrintAll && ctx->tsoNumViewConfigs != viewCount )
 	{
 		TSOPENXR_INFO("%d tsoViewConfigs:\n", viewCount);
 		for (uint32_t i = 0; i < viewCount; i++)
@@ -886,19 +896,26 @@ int tsoCreateSwapchains( tsoContext * ctx )
 	}
 #endif
 
+	if( *tsoSwapchains )
+	{
+		tsoDestroySwapchains( ctx );
+	}
+
 	// For now we just pick the default one.
 	int64_t swapchainFormatToUse = swapchainFormats[selfmt];
 
-	*tsoSwapchains = realloc( *tsoSwapchains, tsoNumViewConfigs * sizeof( tsoSwapchainInfo ) );
-	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, tsoNumViewConfigs * sizeof( uint32_t ) );
-	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
+	int numSwapchainsPerFrame = ctx->numSwapchainsPerFrame = (ctx->flags & TSO_DOUBLEWIDE)?1:tsoNumViewConfigs;
+
+	*tsoSwapchains = realloc( *tsoSwapchains, numSwapchainsPerFrame * sizeof( tsoSwapchainInfo ) );
+	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, numSwapchainsPerFrame * sizeof( uint32_t ) );
+	for (uint32_t i = 0; i < numSwapchainsPerFrame; i++)
 	{
 		XrSwapchainCreateInfo sci = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
 		sci.createFlags = 0;
 		sci.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 		sci.format = swapchainFormatToUse;
 		sci.sampleCount = 1;
-		sci.width = tsoViewConfigs[i].recommendedImageRectWidth;
+		sci.width = tsoViewConfigs[i].recommendedImageRectWidth * ((ctx->flags & TSO_DOUBLEWIDE)?tsoNumViewConfigs:1);
 		sci.height = tsoViewConfigs[i].recommendedImageRectHeight;
 		sci.faceCount = 1;
 		sci.arraySize = 1;
@@ -922,8 +939,8 @@ int tsoCreateSwapchains( tsoContext * ctx )
 		}
 	}
 
-	*tsoSwapchainImages = realloc( *tsoSwapchainImages, tsoNumViewConfigs * sizeof( XrSwapchainImageOpenGLKHR * ) ); 
-	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
+	*tsoSwapchainImages = realloc( *tsoSwapchainImages, numSwapchainsPerFrame * sizeof( XrSwapchainImageOpenGLKHR * ) ); 
+	for (uint32_t i = 0; i < numSwapchainsPerFrame; i++)
 	{
 		(*tsoSwapchainImages)[i] = malloc( (*tsoSwapchainLengths)[i] * sizeof(XrSwapchainImageOpenGLKHR) );
 		for (uint32_t j = 0; j < (*tsoSwapchainLengths)[i]; j++)
@@ -1025,13 +1042,22 @@ int tsoRenderFrame( tsoContext * ctx )
 		return result;
 	}
 
+	// Potentially resize.
+	tsoEnumeratetsoViewConfigs( ctx );
+	
+	// Originally written this way to allow for  || ctx->tsoViewConfigs[0].recommendedImageRectWidth != ctx->tsoSwapchains[0].width  ... But this doesn't work in any current runtimes.
+	if( !ctx->tsoNumViewConfigs || !ctx->tsoSwapchains )
+	{
+		if ( ( result = tsoCreateSwapchains( ctx ) ) ) return result;
+	}		
+
 	int layerCount = 0;
-	XrCompositionLayerProjection layer;
-	const XrCompositionLayerBaseHeader * layers[1] = { (XrCompositionLayerBaseHeader *)&layer };
+	XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
 	layer.layerFlags = 0; //XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-	layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION;
 	layer.next = NULL;
 	layer.space = tsoStageSpace;
+
+	const XrCompositionLayerBaseHeader * layers[1] = { (XrCompositionLayerBaseHeader *)&layer };
 
 	XrView * views = alloca( sizeof( XrView) * tsoNumViewConfigs );
 	for (size_t i = 0; i < tsoNumViewConfigs; i++)
@@ -1041,9 +1067,7 @@ int tsoRenderFrame( tsoContext * ctx )
 	}
 	
 	uint32_t viewCountOutput;
-	XrViewState viewState;
-	viewState.type = XR_TYPE_VIEW_STATE;
-	viewState.next = NULL;
+	XrViewState viewState = { XR_TYPE_VIEW_STATE };
 
 	XrViewLocateInfo vli;
 	vli.type = XR_TYPE_VIEW_LOCATE_INFO;
@@ -1060,21 +1084,36 @@ int tsoRenderFrame( tsoContext * ctx )
 	memset( projectionLayerViews, 0, sizeof( XrCompositionLayerProjectionView ) * viewCountOutput );
 
 	int i;
+	int viewCounts = (ctx->flags & TSO_DOUBLEWIDE)?1:viewCountOutput;
 	for( i = 0; i < viewCountOutput; i++ )
 	{
 		// Each view has a separate swapchain which is acquired, rendered to, and released.
-		const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains + i;
-
 		XrCompositionLayerProjectionView * layerView = projectionLayerViews + i;
 		layerView->type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
 		layerView->pose = views[i].pose;
 		layerView->fov = views[i].fov;
-		layerView->subImage.swapchain = viewSwapchain->handle;
-		layerView->subImage.imageRect.offset.x = 0;
-		layerView->subImage.imageRect.offset.y = 0;
-		layerView->subImage.imageRect.extent.width = viewSwapchain->width;
-		layerView->subImage.imageRect.extent.height = viewSwapchain->height;
-		layerView->subImage.imageArrayIndex = 0;
+		
+		if( ctx->flags & TSO_DOUBLEWIDE )
+		{
+			const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains;
+			int individualWidth = viewSwapchain->width / viewCountOutput;
+			layerView->subImage.swapchain = viewSwapchain->handle;
+			layerView->subImage.imageRect.offset.x = i*individualWidth;
+			layerView->subImage.imageRect.offset.y = 0;
+			layerView->subImage.imageRect.extent.width = individualWidth;
+			layerView->subImage.imageRect.extent.height = viewSwapchain->height;
+			layerView->subImage.imageArrayIndex = 0;
+		}
+		else
+		{
+			const tsoSwapchainInfo * viewSwapchain = ctx->tsoSwapchains + i;
+			layerView->subImage.swapchain = viewSwapchain->handle;
+			layerView->subImage.imageRect.offset.x = 0;
+			layerView->subImage.imageRect.offset.y = 0;
+			layerView->subImage.imageRect.extent.width = viewSwapchain->width;
+			layerView->subImage.imageRect.extent.height = viewSwapchain->height;
+			layerView->subImage.imageArrayIndex = 0;
+		}
 	}
 		
 	// We only support up to 1 layer.
@@ -1087,7 +1126,6 @@ int tsoRenderFrame( tsoContext * ctx )
 			layerCount = 1;
 		}
 	}
-
 
 	XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
 	fei.displayTime = fs.predictedDisplayTime;
@@ -1228,16 +1266,25 @@ int tsoReleaseSwapchain( tsoContext * ctx, int swapchainNumber )
 	return 0;
 }
 
+int tsoDestroySwapchains( tsoContext * ctx )
+{
+	int i;
+	XrResult result;
+	for( i = 0; i < ctx->tsoNumViewConfigs; i++ )
+	{
+		result = xrDestroySwapchain( ctx->tsoSwapchains[i].handle);
+		if( tsoCheck(ctx, result, "xrDestroySwapchain") ) return result;
+	}
+	free( ctx->tsoSwapchains );
+	ctx->tsoSwapchains = 0;
+	return 0;
+}
+
 int tsoTeardown( tsoContext * ctx )
 {
 	XrResult result;
 	int ret = 0;
-	int i;
-	for( i = 0; i < ctx->tsoNumViewConfigs; i++ )
-	{
-		result = xrDestroySwapchain( ctx->tsoSwapchains[i].handle);
-		tsoCheck(ctx, result, "xrDestroySwapchain");
-	}
+	tsoDestroySwapchains( ctx );
 
 	result = xrDestroySpace(ctx->tsoStageSpace);
 	tsoCheck(ctx, result, "xrDestroySpace");

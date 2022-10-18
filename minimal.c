@@ -99,7 +99,6 @@ int main()
 	TSO.tsoRenderLayer = RenderLayer;
 	
 	if ( ( r = tsoDefaultCreateActions( &TSO ) ) ) return r;
-	if ( ( r = tsoCreateSwapchains( &TSO ) ) ) return r;
 
 	while ( CNFGHandleInput() )
 	{
