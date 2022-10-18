@@ -18,6 +18,17 @@
 #define TSOPENXR_IMPLEMENTATION
 #include "tsopenxr.h"
 
+#ifdef ANDROID
+	#define GLES_VER_TARG "100"
+	#define TARGET_OFFSCREEN
+#elif defined(USE_WINDOWS)
+	#define GLES_VER_TARG "100"
+#else
+	// OpenGL 4.3, desktop.
+	#define GLES_VER_TARG "150"
+#endif
+
+
 
 GLuint * colorDepthPairs; // numColorDepthPairs * 2 
 int numColorDepthPairs;
@@ -75,7 +86,7 @@ void EnumOpenGLExtensions()
 	minXRglBindFramebuffer = CNFGGetProcAddress( "glBindFramebuffer" );
 	minXRglFramebufferTexture2D = CNFGGetProcAddress( "glFramebufferTexture2D" );
 	minXRglUniformMatrix4fv = CNFGGetProcAddress( "glUniformMatrix4fv" );
-	minXRglVertexAttribPointer = CNFGGetProcAddress( "glVertexAttribPointer" );	
+	minXRglVertexAttribPointer = CNFGGetProcAddress( "glVertexAttribPointer" );
 	minXRwglSwapIntervalEXT = CNFGGetProcAddress( "wglSwapIntervalEXT" );
 	minXRglBlitNamedFramebuffer = CNFGGetProcAddress( "glBlitNamedFramebuffer" );
 	minXRglActiveTexture = CNFGGetProcAddress( "glActiveTexture" );
@@ -90,13 +101,14 @@ int SetupRendering()
 	minXRglGenFramebuffers(1, &frameBuffer);
 
 	drawProgram = CNFGGLInternalLoadShader(
-		"#version 100\n"
+		"#version " GLES_VER_TARG "\n"
 		"uniform mat4 modelViewProjMatrix;"
 		"attribute vec3 vPos;"
 		"attribute vec4 vColor;"
 		"varying vec4 vc;"
 		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); vc = vColor; }",
 
+		"#version " GLES_VER_TARG "\n"
 		"varying vec4 vc;"
 		"void main() { gl_FragColor = vec4(vc/255.0); }" 
 	);
@@ -111,13 +123,14 @@ int SetupRendering()
 	CNFGglBindAttribLocation( drawProgram, 1, "vColor" );
 
 	textureProgram = CNFGGLInternalLoadShader(
-		"#version 100\n"
+		"#version " GLES_VER_TARG "\n"
 		"uniform mat4 modelViewProjMatrix;"
 		"attribute vec3 vPos;"
 		"attribute vec2 vUV;"
 		"varying vec2 uv;"
 		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); uv = vUV; }",
 
+		"#version " GLES_VER_TARG "\n"
 		"varying vec2 uv;"
 		"uniform sampler2D texture;"
 		"void main() { gl_FragColor = vec4(texture2D(texture, uv).rgb, 1.0); }" 
@@ -139,7 +152,7 @@ int SetupRendering()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-#ifdef ANDROID
+#ifdef TARGET_OFFSCREEN
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0 );
 #else
 	uint32_t colordata[] = { 0xff000000, 0xff0000ff, 0xff00ff00, 0xffff0000 };
@@ -196,9 +209,9 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		uint32_t swapchainImageIndex;
 
 		// Each view has a separate swapchain which is acquired, rendered to, and released.
-		tsoAcquireSwapchain( ctx, i, &swapchainImageIndex );		
+		tsoAcquireSwapchain( ctx, i, &swapchainImageIndex );
 		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[i][swapchainImageIndex];
-		
+
 		uint32_t colorTexture = swapchainImage->image;
 		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture, layerView->subImage.imageRect.extent.width, layerView->subImage.imageRect.extent.height );
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
@@ -371,7 +384,7 @@ int main()
 			return r;
 		}
 
-		#ifdef ANDROID
+		#ifdef TARGET_OFFSCREEN
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
 		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, debugTexture, 0);
 		minXRglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, GetDepthTextureFromColorTexture( debugTexture, windowW, windowH ), 0);
@@ -462,7 +475,7 @@ int main()
 
 		CNFGSwapBuffers();
 
-#ifndef ANDROID
+#ifndef TARGET_OFFSCREEN
 		glReadBuffer(GL_FRONT);
 		glBindTexture(GL_TEXTURE_2D, debugTexture);
 		glCopyTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, windowW, windowH, 0 );

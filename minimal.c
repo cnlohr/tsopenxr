@@ -10,16 +10,18 @@
 
 #include "os_generic.h"
 
+#define CNFGOGL
+#define CNFGOGL_NEED_EXTENSION
+#define CNFG_IMPLEMENTATION
+#include "rawdraw_sf.h"
+
+
 // Force debugging off for smaller executable.
 #define TSOPENXR_ENABLE_DEBUG 0
 
 #define TSOPENXR_IMPLEMENTATION
 #include "tsopenxr.h"
 
-#define CNFGOGL
-#define CNFGOGL_NEED_EXTENSION
-#define CNFG_IMPLEMENTATION
-#include "rawdraw_sf.h"
 
 GLuint frameBuffer;
 short windowW, windowH;
@@ -42,19 +44,19 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		uint32_t swapchainImageIndex;
 
 		// Each view has a separate swapchain which is acquired, rendered to, and released.
-		tsoAcquireSwapchain( ctx, v, &swapchainImageIndex );		
+		tsoAcquireSwapchain( ctx, v, &swapchainImageIndex );
 		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[v][swapchainImageIndex];
-		
+
 		uint32_t colorTexture = swapchainImage->image;
 
 		int width =layerView->subImage.imageRect.extent.width;
 		int height = layerView->subImage.imageRect.extent.height;
-		
+
 		uint32_t * bufferdata = malloc( width*height*4 );
-		
+
 		// Show user different colors in right and left eye.
 		memset( bufferdata, v*250, width*height * 4 );
-		
+
 		glBindTexture( GL_TEXTURE_2D, colorTexture );
 
 		glTexSubImage2D( GL_TEXTURE_2D, 0,
@@ -64,7 +66,7 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		glBindTexture( GL_TEXTURE_2D, 0 );
 
 		free( bufferdata );
-		
+
 		tsoReleaseSwapchain( &TSO, v );
 	}
 

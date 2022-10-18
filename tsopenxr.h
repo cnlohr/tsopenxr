@@ -4,7 +4,7 @@
 	(based on https://github.com/cnlohr/openxr-minimal)
 	(based on https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp)
 	
-	Portions are: 
+	Portions are:
 		Copyright (c) 2020 Anthony J. Thibault
 	The rest is:
 		Copyright (c) 2022 Charles Lohr
@@ -577,6 +577,15 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 	glBinding.display = egl_display;
 	glBinding.config = egl_config;
 	glBinding.context = egl_context;
+#elif defined( XR_USE_PLATFORM_XLIB )
+	XrGraphicsBindingOpenGLXlibKHR glBinding = {};
+	glBinding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR;
+	glBinding.next = NULL;
+	glBinding.xDisplay = CNFGDisplay;
+	glBinding.visualid = CNFGVisualID;
+	glBinding.glxFBConfig = CNFGGLXFBConfig;
+	glBinding.glxDrawable = CNFGWindow;
+	glBinding.glxContext = CNFGCtx;
 #endif
 
 	XrSessionCreateInfo sci = { 0 };
