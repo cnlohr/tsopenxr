@@ -1,16 +1,22 @@
-all : demo minimal
 
-# Linux Makefile
-
-CFLAGS:=-I. -g -Og
+ifeq ($(OS),Windows_NT)
+CFLAGS:=-I. -s -Os
+LDFLAGS:=-luser32 -lm -lopengl32 -lgdi32 ./openxr_loader.dll
+EX_:=.exe
+else
+CFLAGS:=-I. -s -Os
 LDFLAGS:=-lX11 -lm -lGL ./libopenxr_loader.so
+endif
 
-demo : demo.c
+PROJECTS:=demo$(EX_) minimal$(EX_)
+
+all : $(PROJECTS)
+
+demo$(EX_) : demo.c
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
-minimal : minimal.c
+minimal$(EX_) : minimal.c
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 clean :
-	rm -rf *.o *~ demo minimal
-
+	rm -rf *.o *~ $(PROJECTS)
