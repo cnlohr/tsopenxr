@@ -45,18 +45,21 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 
 		// Each view has a separate swapchain which is acquired, rendered to, and released.
 		tsoAcquireSwapchain( ctx, v, &swapchainImageIndex );
+
+		#ifdef XR_USE_PLATFORM_XLIB
+		glXMakeCurrent( CNFGDisplay, CNFGWindow, CNFGCtx );
+		#endif
+
 		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[v][swapchainImageIndex];
 
 		uint32_t colorTexture = swapchainImage->image;
 
 		int width =layerView->subImage.imageRect.extent.width;
 		int height = layerView->subImage.imageRect.extent.height;
-
 		uint32_t * bufferdata = malloc( width*height*4 );
 
 		// Show user different colors in right and left eye.
 		memset( bufferdata, v*250, width*height * 4 );
-
 		glBindTexture( GL_TEXTURE_2D, colorTexture );
 
 		glTexSubImage2D( GL_TEXTURE_2D, 0,

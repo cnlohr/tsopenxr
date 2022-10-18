@@ -211,6 +211,10 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 		tsoAcquireSwapchain( ctx, i, &swapchainImageIndex );
 		const XrSwapchainImageOpenGLKHR * swapchainImage = &ctx->tsoSwapchainImages[i][swapchainImageIndex];
 
+		#ifdef XR_USE_PLATFORM_XLIB
+		glXMakeCurrent( CNFGDisplay, CNFGWindow, CNFGCtx );
+		#endif
+
 		uint32_t colorTexture = swapchainImage->image;
 		uint32_t depthTexture = GetDepthTextureFromColorTexture( colorTexture, layerView->subImage.imageRect.extent.width, layerView->subImage.imageRect.extent.height );
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
@@ -382,6 +386,10 @@ int main()
 		{
 			return r;
 		}
+
+		#ifdef XR_USE_PLATFORM_XLIB
+		glXMakeCurrent( CNFGDisplay, CNFGWindow, CNFGCtx );
+		#endif
 
 		#ifdef TARGET_OFFSCREEN
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, frameBuffer );
