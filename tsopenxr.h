@@ -4,7 +4,7 @@
 	(based on https://github.com/cnlohr/openxr-minimal)
 	(based on https://github.com/hyperlogic/openxrstub/blob/main/src/main.cpp)
 	
-	Portions are: 
+	Portions are:
 		Copyright (c) 2020 Anthony J. Thibault
 	The rest is:
 		Copyright (c) 2022 Charles Lohr
@@ -36,8 +36,8 @@
 #define XR_USE_PLATFORM_XLIB
 #endif
 
-#include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
+#include "openxr/openxr.h"
+#include "openxr/openxr_platform.h"
 
 #ifdef XR_USE_PLATFORM_ANDROID
 	#define OPENXR_SELECTED_GRAPHICS_API XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME
@@ -180,6 +180,10 @@ int tsoBeginSession( tsoContext * ctx );
 #define GL_SRGB8 0x8C41
 #endif
 
+#ifdef MSC_VER
+#define alloca _alloca
+#endif
+
 int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, int flags, const char * appname, void * opaque )
 {
 	int r;
@@ -196,12 +200,10 @@ int tsoInitialize( tsoContext * ctx, int32_t openglMajor, int32_t openglMinor, i
 		return result;
 	}
 
-	XrLoaderInitInfoAndroidKHR init_data = { 0 };
+	XrLoaderInitInfoAndroidKHR init_data = { XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR };
 	struct android_app* app = gapp;
 	const struct JNIInvokeInterface ** jniiptr = app->activity->vm;
 	jobject activity = app->activity->clazz;
-
-	init_data.type = XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR;
 	init_data.applicationVM = jniiptr;
 	init_data.applicationContext = activity;
 	loaderFunc( &init_data );
@@ -315,11 +317,20 @@ int tsoEnumerateLayers( tsoContext * ctx )
 		return result;
 	}
 
-	*tsoLayerProps = realloc( *tsoLayerProps, layerCount * sizeof(XrApiLayerProperties) );
-	for( uint32_t i = 0; i < layerCount; i++) {
-		(*tsoLayerProps)[i].type = XR_TYPE_API_LAYER_PROPERTIES;
-		(*tsoLayerProps)[i].next = NULL;
+	if ( layerCount == 0 )
+	{
+		ctx->tsoNumLayerProps = 0;
+		*tsoLayerProps = 0;
+		return 0;
 	}
+
+	*tsoLayerProps = realloc( *tsoLayerProps, layerCount * sizeof( XrApiLayerProperties ) );
+	memset( *tsoLayerProps, 0, layerCount * sizeof( XrApiLayerProperties ) );
+	for ( uint32_t i = 0; i < layerCount; i++ ) {
+		( *tsoLayerProps )[i].type = XR_TYPE_API_LAYER_PROPERTIES;
+		( *tsoLayerProps )[i].next = NULL;
+	}
+
 	result = xrEnumerateApiLayerProperties( layerCount, &layerCount, *tsoLayerProps );
 	if( tsoCheck(ctx, result, "xrEnumerateApiLayerProperties"))
 	{
@@ -347,8 +358,7 @@ int tsoCreateInstance(tsoContext * ctx, const char * appname )
 	// create openxr tsoInstance
 	XrResult result;
 	const char* const enabledExtensions[] = {OPENXR_SELECTED_GRAPHICS_API};
-	XrInstanceCreateInfo ici;
-	ici.type = XR_TYPE_INSTANCE_CREATE_INFO;
+	XrInstanceCreateInfo ici = { XR_TYPE_INSTANCE_CREATE_INFO };
 	ici.next = NULL;
 	ici.createFlags = 0;
 	ici.enabledExtensionCount = 1;
@@ -370,11 +380,10 @@ int tsoCreateInstance(tsoContext * ctx, const char * appname )
 #if TSOPENXR_ENABLE_DEBUG
 	if ( ctx->tsoPrintAll)
 	{
-		XrInstanceProperties ip;
-		ip.type = XR_TYPE_INSTANCE_PROPERTIES;
+		XrInstanceProperties ip = { XR_TYPE_INSTANCE_PROPERTIES };
 		ip.next = NULL;
 
-		result = xrGetInstanceProperties( *tsoInstance, &ip );
+		result = xrGetInstanceProperties( ctx->tsoInstance, &ip );
 		if( tsoCheck( ctx, result, "xrGetInstanceProperties failed" ) )
 		{
 			return result;
@@ -396,22 +405,18 @@ int tsoGetSystemId( tsoContext * ctx )
 	XrInstance tsoInstance = ctx->tsoInstance;
 	
 	XrResult result;
-	XrSystemGetInfo sgi;
-	sgi.type = XR_TYPE_SYSTEM_GET_INFO;
+	XrSystemGetInfo sgi = { XR_TYPE_SYSTEM_GET_INFO };
 	sgi.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 	sgi.next = NULL;
-
 	result = xrGetSystem(tsoInstance, &sgi, &ctx->tsoSystemId);
 	if (tsoCheck(ctx, result, "xrGetSystemFailed"))
 	{
 		return result;
 	}
-
 #if TSOPENXR_ENABLE_DEBUG
 	if ( ctx->tsoPrintAll)
 	{
-		XrSystemProperties sp = { 0 };
-		sp.type = XR_TYPE_SYSTEM_PROPERTIES;
+		XrSystemProperties sp = { XR_TYPE_SYSTEM_PROPERTIES };
 
 		result = xrGetSystemProperties(tsoInstance, ctx->tsoSystemId, &sp);
 		if (tsoCheck(ctx, result, "xrGetSystemProperties failed"))
@@ -534,8 +539,7 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
         "xrGetOpenGLESGraphicsRequirementsKHR",
         (PFN_xrVoidFunction*)(&pfnGetOpenGLESGraphicsRequirementsKHR));
 
-    XrGraphicsRequirementsOpenGLESKHR graphicsRequirements = {};
-    graphicsRequirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR;
+    XrGraphicsRequirementsOpenGLESKHR graphicsRequirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR };
     result = pfnGetOpenGLESGraphicsRequirementsKHR(ctx->tsoInstance, ctx->tsoSystemId, &graphicsRequirements);
 	if (tsoCheck(ctx, result, "pfnGetOpenGLESGraphicsRequirementsKHR"))
 	{
@@ -565,22 +569,24 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
     // Create the OpenXR Session.
 
 #ifdef XR_USE_PLATFORM_WIN32
-	XrGraphicsBindingOpenGLWin32KHR glBinding = {};
-	glBinding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR;
-	glBinding.next = NULL;
+	XrGraphicsBindingOpenGLWin32KHR glBinding = { XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR  };
 	glBinding.hDC = wglGetCurrentDC();
 	glBinding.hGLRC = wglGetCurrentContext();
 #elif defined( XR_USE_PLATFORM_ANDROID )
-	XrGraphicsBindingOpenGLESAndroidKHR glBinding = {};
-	glBinding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR;
-	glBinding.next = NULL;
+	XrGraphicsBindingOpenGLESAndroidKHR glBinding = { XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR };
 	glBinding.display = egl_display;
 	glBinding.config = egl_config;
 	glBinding.context = egl_context;
+#elif defined( XR_USE_PLATFORM_XLIB )
+	XrGraphicsBindingOpenGLXlibKHR glBinding = { XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR };
+	glBinding.xDisplay = CNFGDisplay;
+	glBinding.visualid = CNFGVisualID;
+	glBinding.glxFBConfig = CNFGGLXFBConfig;
+	glBinding.glxDrawable = CNFGWindow;
+	glBinding.glxContext = CNFGCtx;
 #endif
 
-	XrSessionCreateInfo sci = { 0 };
-	sci.type = XR_TYPE_SESSION_CREATE_INFO;
+	XrSessionCreateInfo sci = { XR_TYPE_SESSION_CREATE_INFO };
 	sci.next = &glBinding;
 	sci.systemId = tsoSystemId;
 
@@ -728,9 +734,7 @@ int tsoDefaultCreateActions( tsoContext * ctx )
         }
     }
 	
-	XrActionSpaceCreateInfo aspci = { 0 };
-	aspci.type = XR_TYPE_ACTION_SPACE_CREATE_INFO;
-	aspci.next = NULL;
+	XrActionSpaceCreateInfo aspci = { XR_TYPE_ACTION_SPACE_CREATE_INFO };
 	aspci.action = ctx->poseAction;
 	XrPosef identity = { {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f} };
 	aspci.poseInActionSpace = identity;
@@ -846,7 +850,7 @@ int tsoCreateSwapchains( tsoContext * ctx )
 		return result;
 	}
 
-	int64_t swapchainFormats[swapchainFormatCount];
+	int64_t * swapchainFormats = alloca(swapchainFormatCount * sizeof( int64_t ));
 	result = xrEnumerateSwapchainFormats(tsoSession, swapchainFormatCount, &swapchainFormatCount, swapchainFormats);
 	if (tsoCheck(ctx, result, "xrEnumerateSwapchainFormats"))
 	{
@@ -889,9 +893,7 @@ int tsoCreateSwapchains( tsoContext * ctx )
 	*tsoSwapchainLengths = realloc( *tsoSwapchainLengths, tsoNumViewConfigs * sizeof( uint32_t ) );
 	for (uint32_t i = 0; i < tsoNumViewConfigs; i++)
 	{
-		XrSwapchainCreateInfo sci = { 0 };
-		sci.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-		sci.next = NULL;
+		XrSwapchainCreateInfo sci = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
 		sci.createFlags = 0;
 		sci.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 		sci.format = swapchainFormatToUse;
@@ -1031,7 +1033,7 @@ int tsoRenderFrame( tsoContext * ctx )
 	layer.next = NULL;
 	layer.space = tsoStageSpace;
 
-	XrView views[tsoNumViewConfigs];
+	XrView * views = alloca( sizeof( XrView) * tsoNumViewConfigs );
 	for (size_t i = 0; i < tsoNumViewConfigs; i++)
 	{
 		views[i].type = XR_TYPE_VIEW;
@@ -1054,7 +1056,7 @@ int tsoRenderFrame( tsoContext * ctx )
 		return result;
 	}
 
-	XrCompositionLayerProjectionView projectionLayerViews[viewCountOutput];
+	XrCompositionLayerProjectionView *projectionLayerViews = alloca( viewCountOutput * sizeof( XrCompositionLayerProjectionView ) );
 	memset( projectionLayerViews, 0, sizeof( XrCompositionLayerProjectionView ) * viewCountOutput );
 
 	int i;
@@ -1087,8 +1089,7 @@ int tsoRenderFrame( tsoContext * ctx )
 	}
 
 
-	XrFrameEndInfo fei = { 0 };
-	fei.type = XR_TYPE_FRAME_END_INFO;
+	XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
 	fei.displayTime = fs.predictedDisplayTime;
 	fei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	fei.layerCount = layerCount;
@@ -1107,10 +1108,7 @@ int tsoRenderFrame( tsoContext * ctx )
 
 int tsoHandleLoop( tsoContext * ctx )
 {
-	XrEventDataBuffer xrEvent = { 0 };
-	xrEvent.type = XR_TYPE_EVENT_DATA_BUFFER;
-	xrEvent.next = NULL;
-
+	XrEventDataBuffer xrEvent = { XR_TYPE_EVENT_DATA_BUFFER };
 	XrResult result = xrPollEvent(ctx->tsoInstance, &xrEvent);
 
 	if (result == XR_SUCCESS)
