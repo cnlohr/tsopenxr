@@ -128,7 +128,7 @@ typedef struct tsoContext_t
 #endif
 
 // Init Flags
-#define TSO_DO_DEBUG 1    // Log all
+#define TSO_DO_DEBUG 1	// Log all
 #define TSO_DOUBLEWIDE 2  // Enable double-wide frames.
 
 // Most functions return 0 on success.
@@ -396,9 +396,9 @@ int tsoCreateInstance(tsoContext * ctx, const char * appname )
 
 		TSOPENXR_INFO("Runtime Name: %s\n", ip.runtimeName);
 		TSOPENXR_INFO("Runtime Version: %d.%d.%d\n",
-			   XR_VERSION_MAJOR(ip.runtimeVersion),
-			   XR_VERSION_MINOR(ip.runtimeVersion),
-			   XR_VERSION_PATCH(ip.runtimeVersion));
+		XR_VERSION_MAJOR(ip.runtimeVersion),
+		XR_VERSION_MINOR(ip.runtimeVersion),
+		XR_VERSION_PATCH(ip.runtimeVersion));
 	}
 #endif
 	return 0;
@@ -526,9 +526,9 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 		if (ctx->tsoPrintAll)
 		{
 			TSOPENXR_INFO("current OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(desiredApiVersion),
-				   XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
+				XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
 			TSOPENXR_INFO("minimum OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(reqs.minApiVersionSupported),
-				   XR_VERSION_MINOR(reqs.minApiVersionSupported), XR_VERSION_PATCH(reqs.minApiVersionSupported));
+				XR_VERSION_MINOR(reqs.minApiVersionSupported), XR_VERSION_PATCH(reqs.minApiVersionSupported));
 		}
 #endif
 		if (reqs.minApiVersionSupported > desiredApiVersion)
@@ -542,41 +542,42 @@ int tsoCreateSession( tsoContext * ctx, uint32_t openglMajor, uint32_t openglMin
 
 #ifdef ANDROID
 
-    // Get the graphics requirements.
-    PFN_xrGetOpenGLESGraphicsRequirementsKHR pfnGetOpenGLESGraphicsRequirementsKHR = NULL;
-    xrGetInstanceProcAddr(
-        ctx->tsoInstance,
-        "xrGetOpenGLESGraphicsRequirementsKHR",
-        (PFN_xrVoidFunction*)(&pfnGetOpenGLESGraphicsRequirementsKHR));
+	// Get the graphics requirements.
+	PFN_xrGetOpenGLESGraphicsRequirementsKHR pfnGetOpenGLESGraphicsRequirementsKHR = NULL;
+	xrGetInstanceProcAddr(
+		ctx->tsoInstance,
+		"xrGetOpenGLESGraphicsRequirementsKHR",
+		(PFN_xrVoidFunction*)(&pfnGetOpenGLESGraphicsRequirementsKHR));
 
-    XrGraphicsRequirementsOpenGLESKHR graphicsRequirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR };
-    result = pfnGetOpenGLESGraphicsRequirementsKHR(ctx->tsoInstance, ctx->tsoSystemId, &graphicsRequirements);
+	XrGraphicsRequirementsOpenGLESKHR graphicsRequirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR };
+	result = pfnGetOpenGLESGraphicsRequirementsKHR(ctx->tsoInstance, ctx->tsoSystemId, &graphicsRequirements);
 	if (tsoCheck(ctx, result, "pfnGetOpenGLESGraphicsRequirementsKHR"))
 	{
 		return result;
 	}
 
 #if TSOPENXR_ENABLE_DEBUG
-		if (ctx->tsoPrintAll)
-		{
-			const XrVersion desiredApiVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
-			TSOPENXR_INFO("current OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(desiredApiVersion),
-				   XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
-			TSOPENXR_INFO("minimum OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(graphicsRequirements.minApiVersionSupported),
-				   XR_VERSION_MINOR(graphicsRequirements.minApiVersionSupported), XR_VERSION_PATCH(graphicsRequirements.minApiVersionSupported));
-		}
+	if (ctx->tsoPrintAll)
+	{
+		const XrVersion desiredApiVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
+		TSOPENXR_INFO("current OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(desiredApiVersion),
+			XR_VERSION_MINOR(desiredApiVersion), XR_VERSION_PATCH(desiredApiVersion));
+		TSOPENXR_INFO("minimum OpenGL version: %d.%d.%d\n", XR_VERSION_MAJOR(graphicsRequirements.minApiVersionSupported),
+			XR_VERSION_MINOR(graphicsRequirements.minApiVersionSupported), XR_VERSION_PATCH(graphicsRequirements.minApiVersionSupported));
+	}
 #endif
-    // Check the graphics requirements.
-    const XrVersion eglVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
-    if (eglVersion < graphicsRequirements.minApiVersionSupported ||
-        eglVersion > graphicsRequirements.maxApiVersionSupported) {
-        TSOPENXR_ERROR("GLES version %d.%d not supported", openglMajor, openglMinor);
-        return -1;
-    }
+
+	// Check the graphics requirements.
+	const XrVersion eglVersion = XR_MAKE_VERSION(openglMajor, openglMinor, 0);
+	if (eglVersion < graphicsRequirements.minApiVersionSupported ||
+		eglVersion > graphicsRequirements.maxApiVersionSupported) {
+		TSOPENXR_ERROR("GLES version %d.%d not supported", openglMajor, openglMinor);
+		return -1;
+	}
 #endif
 
 
-    // Create the OpenXR Session.
+	// Create the OpenXR Session.
 
 #ifdef XR_USE_PLATFORM_WIN32
 	XrGraphicsBindingOpenGLWin32KHR glBinding = { XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR  };
@@ -712,37 +713,37 @@ int tsoDefaultCreateActions( tsoContext * ctx )
 		}
 	}
 
-    // Oculus touch (Auto-remaps well to Index)
-    {
-        XrPath interactionProfilePath = XR_NULL_PATH;
-        xrStringToPath(tsoInstance, "/interaction_profiles/oculus/touch_controller", &interactionProfilePath);
-        XrActionSuggestedBinding bindings[] = {
-            {ctx->grabAction, ctx->squeezeValuePath[0]},
-            {ctx->grabAction, ctx->squeezeValuePath[1]},
-            {ctx->triggerAction, ctx->triggerValuePath[0]},
-            {ctx->triggerAction, ctx->triggerValuePath[1]},
+	// Oculus touch (Auto-remaps well to Index)
+	{
+		XrPath interactionProfilePath = XR_NULL_PATH;
+		xrStringToPath(tsoInstance, "/interaction_profiles/oculus/touch_controller", &interactionProfilePath);
+		XrActionSuggestedBinding bindings[] = {
+			{ctx->grabAction, ctx->squeezeValuePath[0]},
+			{ctx->grabAction, ctx->squeezeValuePath[1]},
+			{ctx->triggerAction, ctx->triggerValuePath[0]},
+			{ctx->triggerAction, ctx->triggerValuePath[1]},
 			{ctx->triggerActionClick, ctx->triggerValuePath[0]},
 			{ctx->triggerActionClick, ctx->triggerValuePath[1]},
-            {ctx->poseAction, ctx->posePath[0]},
-            {ctx->poseAction, ctx->posePath[1]},
-            {ctx->menuAction, ctx->menuClickPath[0]},
-            //{menuAction, menuClickPath[1]},  // no menu button on right controller?
-            {ctx->vibrateAction, ctx->hapticPath[0]},
-            {ctx->vibrateAction, ctx->hapticPath[1]}
-        };
+			{ctx->poseAction, ctx->posePath[0]},
+			{ctx->poseAction, ctx->posePath[1]},
+			{ctx->menuAction, ctx->menuClickPath[0]},
+			//{menuAction, menuClickPath[1]},  // no menu button on right controller?
+			{ctx->vibrateAction, ctx->hapticPath[0]},
+			{ctx->vibrateAction, ctx->hapticPath[1]}
+		};
 
-        XrInteractionProfileSuggestedBinding suggestedBindings;
-        suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-        suggestedBindings.next = NULL;
-        suggestedBindings.interactionProfile = interactionProfilePath;
-        suggestedBindings.suggestedBindings = bindings;
-        suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
-        result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
-        if (tsoCheck(ctx, result, "xrSuggestInteractionProfileBindings (oculus)"))
-        {
-            return result;
-        }
-    }
+		XrInteractionProfileSuggestedBinding suggestedBindings;
+		suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+		suggestedBindings.next = NULL;
+		suggestedBindings.interactionProfile = interactionProfilePath;
+		suggestedBindings.suggestedBindings = bindings;
+		suggestedBindings.countSuggestedBindings = sizeof( bindings ) / sizeof( bindings[0] );
+		result = xrSuggestInteractionProfileBindings(tsoInstance, &suggestedBindings);
+		if (tsoCheck(ctx, result, "xrSuggestInteractionProfileBindings (oculus)"))
+		{
+			return result;
+		}
+	}
 	
 	XrActionSpaceCreateInfo aspci = { XR_TYPE_ACTION_SPACE_CREATE_INFO };
 	aspci.action = ctx->poseAction;
@@ -1312,83 +1313,83 @@ int tsoTeardown( tsoContext * ctx )
 
 void tsoUtilInitPoseMat(float* result, const XrPosef * pose)
 {
-    const float x2  = pose->orientation.x + pose->orientation.x;
-    const float y2  = pose->orientation.y + pose->orientation.y;
-    const float z2  = pose->orientation.z + pose->orientation.z;
+	const float x2  = pose->orientation.x + pose->orientation.x;
+	const float y2  = pose->orientation.y + pose->orientation.y;
+	const float z2  = pose->orientation.z + pose->orientation.z;
 
-    const float xx2 = pose->orientation.x * x2;
-    const float yy2 = pose->orientation.y * y2;
-    const float zz2 = pose->orientation.z * z2;
+	const float xx2 = pose->orientation.x * x2;
+	const float yy2 = pose->orientation.y * y2;
+	const float zz2 = pose->orientation.z * z2;
 
-    const float yz2 = pose->orientation.y * z2;
-    const float wx2 = pose->orientation.w * x2;
-    const float xy2 = pose->orientation.x * y2;
-    const float wz2 = pose->orientation.w * z2;
-    const float xz2 = pose->orientation.x * z2;
-    const float wy2 = pose->orientation.w * y2;
+	const float yz2 = pose->orientation.y * z2;
+	const float wx2 = pose->orientation.w * x2;
+	const float xy2 = pose->orientation.x * y2;
+	const float wz2 = pose->orientation.w * z2;
+	const float xz2 = pose->orientation.x * z2;
+	const float wy2 = pose->orientation.w * y2;
 
-    result[0] = 1.0f - yy2 - zz2;
-    result[1] = xy2 + wz2;
-    result[2] = xz2 - wy2;
-    result[3] = 0.0f;
+	result[0] = 1.0f - yy2 - zz2;
+	result[1] = xy2 + wz2;
+	result[2] = xz2 - wy2;
+	result[3] = 0.0f;
 
-    result[4] = xy2 - wz2;
-    result[5] = 1.0f - xx2 - zz2;
-    result[6] = yz2 + wx2;
-    result[7] = 0.0f;
+	result[4] = xy2 - wz2;
+	result[5] = 1.0f - xx2 - zz2;
+	result[6] = yz2 + wx2;
+	result[7] = 0.0f;
 
-    result[8] = xz2 + wy2;
-    result[9] = yz2 - wx2;
-    result[10] = 1.0f - xx2 - yy2;
-    result[11] = 0.0f;
+	result[8] = xz2 + wy2;
+	result[9] = yz2 - wx2;
+	result[10] = 1.0f - xx2 - yy2;
+	result[11] = 0.0f;
 
-    result[12] = pose->position.x;
-    result[13] = pose->position.y;
-    result[14] = pose->position.z;
-    result[15] = 1.0;
+	result[12] = pose->position.x;
+	result[13] = pose->position.y;
+	result[14] = pose->position.z;
+	result[15] = 1.0;
 }
 
 void tsoMultiplyMat(float* result, const float* a, const float* b)
 {
-    result[0] = a[0] * b[0] + a[4] * b[1] + a[8] * b[2] + a[12] * b[3];
-    result[1] = a[1] * b[0] + a[5] * b[1] + a[9] * b[2] + a[13] * b[3];
-    result[2] = a[2] * b[0] + a[6] * b[1] + a[10] * b[2] + a[14] * b[3];
-    result[3] = a[3] * b[0] + a[7] * b[1] + a[11] * b[2] + a[15] * b[3];
+	result[0] = a[0] * b[0] + a[4] * b[1] + a[8] * b[2] + a[12] * b[3];
+	result[1] = a[1] * b[0] + a[5] * b[1] + a[9] * b[2] + a[13] * b[3];
+	result[2] = a[2] * b[0] + a[6] * b[1] + a[10] * b[2] + a[14] * b[3];
+	result[3] = a[3] * b[0] + a[7] * b[1] + a[11] * b[2] + a[15] * b[3];
 
-    result[4] = a[0] * b[4] + a[4] * b[5] + a[8] * b[6] + a[12] * b[7];
-    result[5] = a[1] * b[4] + a[5] * b[5] + a[9] * b[6] + a[13] * b[7];
-    result[6] = a[2] * b[4] + a[6] * b[5] + a[10] * b[6] + a[14] * b[7];
-    result[7] = a[3] * b[4] + a[7] * b[5] + a[11] * b[6] + a[15] * b[7];
+	result[4] = a[0] * b[4] + a[4] * b[5] + a[8] * b[6] + a[12] * b[7];
+	result[5] = a[1] * b[4] + a[5] * b[5] + a[9] * b[6] + a[13] * b[7];
+	result[6] = a[2] * b[4] + a[6] * b[5] + a[10] * b[6] + a[14] * b[7];
+	result[7] = a[3] * b[4] + a[7] * b[5] + a[11] * b[6] + a[15] * b[7];
 
-    result[8] = a[0] * b[8] + a[4] * b[9] + a[8] * b[10] + a[12] * b[11];
-    result[9] = a[1] * b[8] + a[5] * b[9] + a[9] * b[10] + a[13] * b[11];
-    result[10] = a[2] * b[8] + a[6] * b[9] + a[10] * b[10] + a[14] * b[11];
-    result[11] = a[3] * b[8] + a[7] * b[9] + a[11] * b[10] + a[15] * b[11];
+	result[8] = a[0] * b[8] + a[4] * b[9] + a[8] * b[10] + a[12] * b[11];
+	result[9] = a[1] * b[8] + a[5] * b[9] + a[9] * b[10] + a[13] * b[11];
+	result[10] = a[2] * b[8] + a[6] * b[9] + a[10] * b[10] + a[14] * b[11];
+	result[11] = a[3] * b[8] + a[7] * b[9] + a[11] * b[10] + a[15] * b[11];
 
-    result[12] = a[0] * b[12] + a[4] * b[13] + a[8] * b[14] + a[12] * b[15];
-    result[13] = a[1] * b[12] + a[5] * b[13] + a[9] * b[14] + a[13] * b[15];
-    result[14] = a[2] * b[12] + a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
-    result[15] = a[3] * b[12] + a[7] * b[13] + a[11] * b[14] + a[15] * b[15];
+	result[12] = a[0] * b[12] + a[4] * b[13] + a[8] * b[14] + a[12] * b[15];
+	result[13] = a[1] * b[12] + a[5] * b[13] + a[9] * b[14] + a[13] * b[15];
+	result[14] = a[2] * b[12] + a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
+	result[15] = a[3] * b[12] + a[7] * b[13] + a[11] * b[14] + a[15] * b[15];
 }
 
 void tsoInvertOrthogonalMat(float* result, float* src)
 {
-    result[0] = src[0];
-    result[1] = src[4];
-    result[2] = src[8];
-    result[3] = 0.0f;
-    result[4] = src[1];
-    result[5] = src[5];
-    result[6] = src[9];
-    result[7] = 0.0f;
-    result[8] = src[2];
-    result[9] = src[6];
-    result[10] = src[10];
-    result[11] = 0.0f;
-    result[12] = -(src[0] * src[12] + src[1] * src[13] + src[2] * src[14]);
-    result[13] = -(src[4] * src[12] + src[5] * src[13] + src[6] * src[14]);
-    result[14] = -(src[8] * src[12] + src[9] * src[13] + src[10] * src[14]);
-    result[15] = 1.0f;
+	result[0] = src[0];
+	result[1] = src[4];
+	result[2] = src[8];
+	result[3] = 0.0f;
+	result[4] = src[1];
+	result[5] = src[5];
+	result[6] = src[9];
+	result[7] = 0.0f;
+	result[8] = src[2];
+	result[9] = src[6];
+	result[10] = src[10];
+	result[11] = 0.0f;
+	result[12] = -(src[0] * src[12] + src[1] * src[13] + src[2] * src[14]);
+	result[13] = -(src[4] * src[12] + src[5] * src[13] + src[6] * src[14]);
+	result[14] = -(src[8] * src[12] + src[9] * src[13] + src[10] * src[14]);
+	result[15] = 1.0f;
 }
 
 void tsoUtilInitProjectionMat(XrCompositionLayerProjectionView * layerView, float* projMat, float * invViewMat, float * viewMat, float * modelViewProjMat,
