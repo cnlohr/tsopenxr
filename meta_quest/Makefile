@@ -18,12 +18,12 @@ SRC?=../demo.c
 #We've tested it with android version 22, 24, 28, 29 and 30.
 #You can target something like Android 28, but if you set ANDROIDVERSION to say 22, then
 #Your app should (though not necessarily) support all the way back to Android 22. 
-ANDROIDVERSION=29
-ANDROIDTARGET=29
+ANDROIDVERSION=30
+ANDROIDTARGET=30
 #$(ANDROIDVERSION)
 #Default is to be strip down, but your app can override it.
-CFLAGS?=-ffunction-sections -Os -fdata-sections -Wall -fvisibility=hidden -I..
-LDFLAGS?=-Wl,--gc-sections -s
+CFLAGS?=-ffunction-sections -Os -fdata-sections -Wall -I.. # -fvisibility=hidden
+#LDFLAGS?=-Wl,--gc-sections -s
 ANDROID_FULLSCREEN?=y
 ADB?=adb
 UNAME := $(shell uname)
@@ -80,7 +80,7 @@ CFLAGS +=-DANDROID_FULLSCREEN
 endif
 CFLAGS+= -I$(RAWDRAWANDROID)/rawdraw -I$(NDK)/sysroot/usr/include -I$(NDK)/sysroot/usr/include/android -I$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/include/android -fPIC -I$(RAWDRAWANDROID) -DANDROIDVERSION=$(ANDROIDVERSION)
 LDFLAGS += -lm -lGLESv3 -lEGL -landroid -llog
-LDFLAGS += -shared -uANativeActivity_onCreate
+LDFLAGS += -shared -uANativeActivity_onCreate -uANativeActivity_finish
 
 CC_ARM64:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/aarch64-linux-android$(ANDROIDVERSION)-clang
 CC_ARM32:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/armv7a-linux-androideabi$(ANDROIDVERSION)-clang

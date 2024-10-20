@@ -28,17 +28,16 @@
 	#define GLES_VER_TARG "150"
 #endif
 
-
 GLuint * colorDepthPairs; // numColorDepthPairs * 2 
 int numColorDepthPairs;
 GLuint debugTexture;
 GLuint frameBuffer;
 
-GLuint drawProgram;
-GLuint drawProgramModelViewUniform;
-GLuint textureProgram;
-GLuint textureProgramModelViewUniform;
-GLuint textureProgramTextureUniform;
+GLint drawProgram;
+GLint drawProgramModelViewUniform;
+GLint textureProgram;
+GLint textureProgramModelViewUniform;
+GLint textureProgramTextureUniform;
 short windowW, windowH;
 
 XrCompositionLayerProjectionView saveLayerProjectionView;
@@ -104,18 +103,20 @@ int SetupRendering()
 		"uniform mat4 modelViewProjMatrix;"
 		"attribute vec3 vPos;"
 		"attribute vec4 vColor;"
-		"varying vec4 vc;"
+		"varying "PRECISIONB" vec4 vc;"
 		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); vc = vColor; }",
 
 		"#version " GLES_VER_TARG "\n"
-		"varying vec4 vc;"
+		"varying "PRECISIONB" vec4 vc;"
 		"void main() { gl_FragColor = vec4(vc/255.0); }" 
 	);
+
 	if( drawProgram <= 0 )
 	{
 		TSOPENXR_ERROR( "Error: Cannot load shader\n" );
 		return -1;
 	}
+
 	CNFGglUseProgram( drawProgram );
 	drawProgramModelViewUniform = CNFGglGetUniformLocation ( drawProgram , "modelViewProjMatrix" );
 	CNFGglBindAttribLocation( drawProgram, 0, "vPos" );
@@ -126,19 +127,21 @@ int SetupRendering()
 		"uniform mat4 modelViewProjMatrix;"
 		"attribute vec3 vPos;"
 		"attribute vec2 vUV;"
-		"varying vec2 uv;"
+		"varying "PRECISIONB" vec2 uv;"
 		"void main() { gl_Position = vec4( modelViewProjMatrix * vec4( vPos.xyz, 1.0 ) ); uv = vUV; }",
 
 		"#version " GLES_VER_TARG "\n"
-		"varying vec2 uv;"
+		"varying "PRECISIONB" vec2 uv;"
 		"uniform sampler2D texture;"
 		"void main() { gl_FragColor = vec4(texture2D(texture, uv).rgb, 1.0); }" 
 	);
+
 	if( textureProgram <= 0 )
 	{
 		TSOPENXR_ERROR( "Error: Cannot load shader\n" );
 		return -1;
 	}
+
 	CNFGglUseProgram( textureProgram );
 	textureProgramModelViewUniform = CNFGglGetUniformLocation ( textureProgram , "modelViewProjMatrix" );
 	textureProgramTextureUniform = CNFGglGetUniformLocation ( textureProgram , "texture" );
@@ -177,7 +180,7 @@ uint32_t CreateDepthTexture(uint32_t colorTexture, int width, int height )
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0 );
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0 );
 	return depthTexture;
 }
 
@@ -314,7 +317,6 @@ int RenderLayer(tsoContext * ctx, XrTime predictedDisplayTime, XrCompositionLaye
 int main()
 {
 	int r;
-
 	// Tell windows we want to use VT100 terminal color codes.
 	#if defined( USE_WINDOWS ) && !defined( _MSC_VER )
 	system("");
@@ -347,6 +349,9 @@ int main()
 	#else
 	CNFGSetVSync( 0 );
 	#endif
+
+	double dSecondTime = OGGetAbsoluteTime();
+	int iFPS = 0;
 
 	while ( CNFGHandleInput() )
 	{
@@ -475,7 +480,13 @@ int main()
 #else
 		minXRglBindFramebuffer( GL_FRAMEBUFFER, 0 );
 #endif
-
+		if( OGGetAbsoluteTime() - dSecondTime >= 1 )
+		{
+			dSecondTime++;
+			printf( "FPS: %d\n", iFPS );
+			iFPS = 0;
+		}
+		iFPS++;
 	}
 
 	return tsoTeardown( &TSO );
